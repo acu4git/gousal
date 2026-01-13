@@ -1,7 +1,11 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
-
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  },
+  "[html][css][javascript][javascriptreact][typescript][typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "prettier.prettierPath": "./frontend/node_modules/prettier",
   "prettier.configPath": "./frontend/.prettierrc"
 }
