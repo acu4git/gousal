@@ -1,39 +1,56 @@
 import { useState } from "react";
 import logo from "@/assets/images/logo-universal.png";
 import "@/App.css";
-import { Greet } from "#wailsjs/go/main/App";
+import { SelectGoProject } from "#wailsjs/go/main/App";
 
-function App() {
-  const [resultText, setResultText] = useState("Please enter your name below 👇");
-  const [name, setName] = useState("");
-  const updateName = (e: any) => setName(e.target.value);
-  const updateResultText = (result: string) => setResultText(result);
+type Item = {
+  id: number;
+  name: string;
+};
 
-  function greet() {
-    Greet(name).then(updateResultText);
-  }
+const App = () => {
+  const [items, setItems] = useState<Item[]>([]);
+  const [selectedId, setSelectedId] = useState<number>(-1);
+
+  const selectGoProject = () => {
+    SelectGoProject().then(updateItems);
+  };
+
+  const updateItems = (files: string[]) => {
+    let newItems: Item[] = [];
+    files.map((file, idx) => {
+      const newcb: Item = {
+        id: idx,
+        name: file,
+      };
+      newItems.push(newcb);
+    });
+    setItems(newItems);
+  };
 
   return (
     <div id="App">
       <img src={logo} id="logo" alt="logo" />
-      <div id="result" className="result">
-        {resultText}
+      <div className="flex flex-col items-baseline">
+        {items.map((item) => (
+          <label key={item.id}>
+            <input
+              type="radio"
+              name="go-project-files"
+              checked={item.id === selectedId}
+              onChange={() => setSelectedId(item.id)}
+            />
+            {item.name}
+          </label>
+        ))}
       </div>
       <div id="input" className="input-box">
-        <input
-          id="name"
-          className="input"
-          onChange={updateName}
-          autoComplete="off"
-          name="input"
-          type="text"
-        />
-        <button className="btn" onClick={greet}>
-          Greet
+        <button className="hover:opacity-30" onClick={selectGoProject}>
+          Select Go Project
         </button>
       </div>
     </div>
   );
-}
+};
 
 export default App;
