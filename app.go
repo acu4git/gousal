@@ -76,6 +76,7 @@ func (a *App) SelectGoProject() (string, error) {
 	}
 
 	if len(mainFiles) == 1 {
+		a.mainFile = mainFiles[0]
 		return mainFiles[0], nil
 	}
 
