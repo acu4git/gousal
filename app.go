@@ -29,37 +29,59 @@ func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-func (a *App) SelectGoProject() ([]string, error) {
+func (a *App) SelectGoProject() (string, error) {
 	mainFiles := make([]string, 0)
 	for {
-		dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-			Title: "Goプロジェクトを選択",
-		})
+		dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{})
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		isRoot, err := internal.IsGoProject(dir)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if isRoot {
 			mainFiles, err = internal.SearchMainAll(dir)
 			if err != nil {
-				return nil, err
+				return "", err
+			}
+			if len(mainFiles) == 0 {
+				_, err = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+					Type:    runtime.WarningDialog,
+					Title:   "main File Not Found",
+					Message: "This project cannot be traced because of not containing any main files",
+				})
+				if err != nil {
+					return "", err
+				}
+				continue
 			}
 			break
 		}
 
-		m, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		_, err = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 			Type:    runtime.WarningDialog,
 			Title:   "Go Project Not Found",
-			Message: fmt.Sprintf("%s does not appear to be a Go Project. Please select a directory that contains a go.mod file.", dir),
+			Message: fmt.Sprintf("%s does not appear to be a Go project. Please select a directory that contains a go.mod file.", dir),
 		})
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		runtime.LogInfo(a.ctx, m)
 	}
-	return mainFiles, nil
+
+	if len(mainFiles) == 1 {
+		return mainFiles[0], nil
+	}
+
+	res, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Title:   "Found multiple main file",
+		Message: "Select the main file to trace",
+		Buttons: mainFiles,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return res, nil
 }
