@@ -1,15 +1,8 @@
 var {{.FileVar}} *os.File
 
 func {{.InitFunc}}() {
-    cwd, err := os.Getwd()
-    if err != nil {
-        panic(err)
-    }
-    dir := filepath.Join(cwd, "trace_data")
-    if err := os.MkdirAll(dir, 0755); err != nil {
-        panic(err)
-    }
-    f, err := os.Create(filepath.Join(dir, "trace.out"))
+    file := filepath.Join({{.ProjectRoot}}, "trace.out")
+    f, err := os.Create(file)
     if err != nil {
         log.Fatalln(err)
     }
