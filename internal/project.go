@@ -64,8 +64,8 @@ func SearchMainAll(root string) ([]string, error) {
 	return mainFiles, err
 }
 
-// copyProject: ソースから宛先へ再帰的にコピー (除外リスト対応)
-func copyProject(srcRoot, destRoot string, ignored map[string]bool) error {
+// CopyProject: ソースから宛先へ再帰的にコピー (除外リスト対応)
+func CopyProject(srcRoot, destRoot string, ignored map[string]bool) error {
 	return filepath.WalkDir(srcRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
