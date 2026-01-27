@@ -3,6 +3,7 @@ package internal
 import (
 	"go/parser"
 	"go/token"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -61,4 +62,65 @@ func SearchMainAll(root string) ([]string, error) {
 	})
 
 	return mainFiles, err
+}
+
+// copyProject: ソースから宛先へ再帰的にコピー (除外リスト対応)
+func copyProject(srcRoot, destRoot string, ignored map[string]bool) error {
+	return filepath.WalkDir(srcRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// ルートディレクトリ自身はスキップしないが処理もしない
+		if path == srcRoot {
+			return nil
+		}
+
+		// 除外リストのチェック
+		if ignored[d.Name()] {
+			if d.IsDir() {
+				return filepath.SkipDir // ディレクトリなら中身もスキャンしない
+			}
+			return nil // ファイルなら単に無視
+		}
+
+		// コピー先のパスを計算
+		// 例: /project/cmd/main.go -> cmd/main.go
+		relPath, err := filepath.Rel(srcRoot, path)
+		if err != nil {
+			return err
+		}
+		destPath := filepath.Join(destRoot, relPath)
+
+		// ディレクトリの場合: 作成
+		if d.IsDir() {
+			return os.MkdirAll(destPath, 0755)
+		}
+
+		// ファイルの場合: コピー
+		return copyFile(path, destPath)
+	})
+}
+
+// copyFile: 単一ファイルのコピー
+func copyFile(src, dest string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+
+	// パーミッション情報をコピーしたい場合は以下を追加
+	// info, _ := sourceFile.Stat()
+	// os.Chmod(dest, info.Mode())
+
+	return err
 }
