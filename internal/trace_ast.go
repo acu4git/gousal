@@ -18,9 +18,13 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
+const (
+	TEMP_DIR_NAME = "tmp"
+)
+
 func StaticInsertTrace(projectRoot string, filename string) error {
 	// プロジェクトのコピー先の作成
-	tmpRoot := filepath.Join(projectRoot, "tmp")
+	tmpRoot := filepath.Join(projectRoot, TEMP_DIR_NAME)
 	os.MkdirAll(tmpRoot, 0755)
 	r, err := util.RandStringBase62(8)
 	traceDir := filepath.Join(tmpRoot, r)
