@@ -12,7 +12,7 @@ import (
 // App struct
 type App struct {
 	ctx         context.Context
-	gs          graph.GraphState
+	gs          *graph.GraphState
 	projectRoot string
 	mainFile    string
 }
