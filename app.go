@@ -4,13 +4,17 @@ import (
 	"context"
 	"fmt"
 	"wails-test/internal"
+	"wails-test/internal/graph"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	gs          graph.GraphState
+	projectRoot string
+	mainFile    string
 }
 
 // NewApp creates a new App application struct
@@ -57,6 +61,7 @@ func (a *App) SelectGoProject() (string, error) {
 				}
 				continue
 			}
+			a.projectRoot = dir
 			break
 		}
 
@@ -82,6 +87,7 @@ func (a *App) SelectGoProject() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	a.mainFile = res
 
 	return res, nil
 }
