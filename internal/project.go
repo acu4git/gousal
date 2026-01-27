@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+func MakeTmpProjectRoot(projectRoot string) (string, error) {
+	suffix := newTraceSuffix()
+	tmpRoot := filepath.Join(projectRoot, TEMP_DIR_NAME, "trace-"+suffix)
+
+	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+		return "", err
+	}
+	return tmpRoot, nil
+}
+
 func IsGoProject(path string) (bool, error) {
 	modPath := filepath.Join(path, "go.mod")
 	info, err := os.Stat(modPath)
