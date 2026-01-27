@@ -9,10 +9,6 @@ import (
 	"strings"
 )
 
-const (
-	TEMP_DIR_NAME = "tmp"
-)
-
 func IsGoProject(path string) (bool, error) {
 	modPath := filepath.Join(path, "go.mod")
 	info, err := os.Stat(modPath)
