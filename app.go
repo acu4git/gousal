@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"wails-test/internal"
 	"wails-test/internal/graph"
+	"wails-test/internal/trace"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -13,6 +16,7 @@ import (
 type App struct {
 	ctx         context.Context
 	gs          *graph.GraphState
+	cancel      graph.CleanUpFunc
 	projectRoot string
 	mainFile    string
 }
@@ -86,4 +90,87 @@ func (a *App) SelectGoProject() (string, error) {
 	a.mainFile = res
 
 	return res, nil
+}
+
+func (a *App) Trace() (string, error) {
+	// プロジェクトのクローン
+	tmpRoot, err := internal.MakeTmpProjectRoot(a.projectRoot)
+	if err != nil {
+		return "", err
+	}
+	ignoredNames := map[string]bool{
+		".git":                 true, // Git履歴
+		internal.TEMP_DIR_NAME: true, // コピー先自身
+		".idea":                true, // JetBrains設定
+		".vscode":              true, // VSCode設定
+		".DS_STORE":            true, // for Mac
+		"build":                true, // 実行バイナリなど
+	}
+	if err := internal.CopyProject(a.projectRoot, tmpRoot, ignoredNames); err != nil {
+		return "", err
+	}
+	runtime.LogInfo(a.ctx, "project clone succeeded")
+
+	// runtime/traceの挿入
+	goFiles, err := internal.ListGoFiles(a.projectRoot)
+	if err != nil {
+		return "", err
+	}
+	for _, goFile := range goFiles {
+		rel, err := filepath.Rel(a.projectRoot, goFile)
+		if err != nil {
+			return "", err
+		}
+		dstFile := filepath.Join(tmpRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(dstFile), 0755); err != nil {
+			return "", err
+		}
+		if err := trace.StaticInsertTrace(a.projectRoot, tmpRoot, goFile, dstFile); err != nil {
+			return "", err
+		}
+	}
+	runtime.LogInfo(a.ctx, "ast insert succeeded")
+
+	// トレース実行
+	mainRel, err := filepath.Rel(a.projectRoot, a.mainFile)
+	if err != nil {
+		return "", err
+	}
+	tmpMain := filepath.Join(tmpRoot, mainRel)
+	if err := trace.RunWithTrace(tmpMain); err != nil {
+		return "", err
+	}
+	runtime.LogInfof(a.ctx, "trace tmpMain: %s", tmpMain)
+
+	// トレースデータの解析
+	traceFile := filepath.Join(tmpRoot, "trace.out")
+	steps, err := trace.ParseTrace(traceFile)
+	if err != nil {
+		return "", err
+	}
+	runtime.LogInfo(a.ctx, "parse succeeded")
+
+	// GraphState初期化
+	gs, cancel, err := graph.NewGraphState(a.ctx, steps)
+	if err != nil {
+		return "", err
+	}
+	if a.cancel != nil {
+		a.cancel()
+	}
+	a.gs = gs
+	a.cancel = cancel
+	runtime.LogInfo(a.ctx, "init GraphState")
+
+	if err := a.gs.Load(); err != nil {
+		return "", err
+	}
+	runtime.LogInfo(a.ctx, "load GraphState")
+
+	return a.Step()
+}
+
+func (a *App) Step() (string, error) {
+	runtime.LogInfo(a.ctx, "Step")
+	return a.gs.Step()
 }
