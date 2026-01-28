@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"wails-test/internal"
+	"wails-test/internal/trace"
 
 	"github.com/goccy/go-graphviz"
 	"github.com/goccy/go-graphviz/cgraph"
@@ -23,7 +23,7 @@ type GraphState struct {
 	gviz         *graphviz.Graphviz
 	g            *graphviz.Graph
 	cancel       CleanUpFunc
-	steps        internal.StepHistory
+	steps        trace.StepHistory
 	next         int
 	goroutineMap map[int64]*cgraph.Graph
 	funcNodeMap  map[int64]map[string]*cgraph.Node
@@ -32,7 +32,7 @@ type GraphState struct {
 
 type CleanUpFunc func()
 
-func NewGraphState(ctx context.Context, steps internal.StepHistory) (*GraphState, CleanUpFunc, error) {
+func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, CleanUpFunc, error) {
 	gv, err := graphviz.New(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to exec NewGraphState; %w", err)
@@ -63,7 +63,7 @@ func NewGraphState(ctx context.Context, steps internal.StepHistory) (*GraphState
 func (gs *GraphState) Load() error {
 	var (
 		err  error
-		prev *internal.StepInfo
+		prev *trace.StepInfo
 	)
 	for _, step := range gs.steps {
 		// goroutine subgraph
