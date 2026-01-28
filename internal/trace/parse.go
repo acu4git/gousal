@@ -28,11 +28,12 @@ func (sh StepHistory) hasFuncWithPrefix(args ...string) bool {
 	return false
 }
 
-func ParseTrace(traceFile string) ([]StepInfo, error) {
-	r, err := traceReader(traceFile)
+func Parse(traceFile string) ([]StepInfo, error) {
+	r, cancel, err := traceReader(traceFile)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 
 	stepHistory := make(StepHistory, 0)
 
@@ -71,19 +72,20 @@ func ParseTrace(traceFile string) ([]StepInfo, error) {
 	return stepHistory, nil
 }
 
-func traceReader(file string) (*xtrace.Reader, error) {
+type cancelFunc func()
+
+func traceReader(file string) (*xtrace.Reader, cancelFunc, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer f.Close()
 
 	r, err := xtrace.NewReader(f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return r, nil
+	return r, func() { f.Close() }, nil
 }
 
 // funcDefIDは，"<project_root>/<rel>/<go_file>:<line>:<col>#<module>/<package>.<func>"のようなファイル情報と関数情報を'#'で区切る形式のID．

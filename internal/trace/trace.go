@@ -2,6 +2,7 @@ package trace
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -9,15 +10,16 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"text/template"
+	etemp "wails-test/assets/template"
 	"wails-test/internal/util"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/tools/go/ast/astutil"
 )
 
-func StaticInsertTrace(projRoot, tmpRoot, src, dest string) error {
+func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	// Go file -> AST
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, src, nil, parser.ParseComments)
@@ -37,7 +39,9 @@ func StaticInsertTrace(projRoot, tmpRoot, src, dest string) error {
 	})
 
 	for _, fn := range funcs {
-		insertTrace(projRoot, tmpRoot, fset, file, fn)
+		if err := insertTrace(ctx, tmpRoot, fset, file, fn); err != nil {
+			return err
+		}
 	}
 
 	var buf bytes.Buffer
@@ -50,7 +54,7 @@ func StaticInsertTrace(projRoot, tmpRoot, src, dest string) error {
 	return nil
 }
 
-func insertTrace(projRoot, tmpRoot string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
+func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
 	pos := fset.Position(fn.Pos())
 	funcDefID := fmt.Sprintf("%s:%d:%d#%s", pos.Filename, pos.Line, pos.Column, fn.Name.Name)
 
@@ -130,10 +134,9 @@ func insertTrace(projRoot, tmpRoot string, fset *token.FileSet, file *ast.File, 
 			"FileVar":     fileVar,
 			"InitFunc":    funcNameInit,
 			"StopFunc":    funcNameStop,
-			"ProjectRoot": tmpRoot,
+			"ProjectRoot": strconv.Quote(tmpRoot),
 		}
-		templatePath := filepath.Join(projRoot, "assets", "template", "func.tmpl")
-		__src, err := renderTemplate(templatePath, data)
+		__src, err := renderTemplate("func.tmpl", data)
 		if err != nil {
 			return err
 		}
@@ -157,20 +160,23 @@ func insertTrace(projRoot, tmpRoot string, fset *token.FileSet, file *ast.File, 
 		}
 		pkgs[path] = true
 	}
+	// runtime.LogInfo(ctx, "pkg detection done")
+
 	// 追加
 	for pkg, ok := range pkgs {
 		if !ok {
 			astutil.AddImport(fset, file, pkg)
 		}
 	}
+	// runtime.LogInfo(ctx, "AddImport done")
 
 	return nil
 }
 
-func renderTemplate(filename string, data any) (string, error) {
-	t, err := template.ParseFiles(filename)
+func renderTemplate(pattern string, data any) (string, error) {
+	t, err := template.ParseFS(etemp.FS, pattern)
 	if err != nil {
-		return "", err // テンプレート自体が壊れている
+		return "", err
 	}
 
 	var buf bytes.Buffer
@@ -181,9 +187,11 @@ func renderTemplate(filename string, data any) (string, error) {
 	return buf.String(), nil
 }
 
-func RunWithTrace(mainFile string) error {
+func RunWithTrace(ctx context.Context, tmpRoot, mainFile string) error {
 	cmd := exec.Command("go", "run", mainFile)
+	cmd.Dir = tmpRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	runtime.LogInfo(ctx, cmd.String())
 	return cmd.Run()
 }
