@@ -1,17 +1,25 @@
 package internal
 
 import (
+	"bytes"
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"wails-test/internal/util"
+)
+
+const (
+	TEMP_DIR_NAME = ".tmp"
 )
 
 func MakeTmpProjectRoot(projectRoot string) (string, error) {
-	suffix := newTraceSuffix()
+	suffix := util.HexSuffix()
 	tmpRoot := filepath.Join(projectRoot, TEMP_DIR_NAME, "trace-"+suffix)
 
 	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
@@ -133,4 +141,34 @@ func copyFile(src, dest string) error {
 	// os.Chmod(dest, info.Mode())
 
 	return err
+}
+
+type goListPkg struct {
+	Dir     string
+	GoFiles []string
+}
+
+func ListGoFiles(projectRoot string) ([]string, error) {
+	cmd := exec.Command("go", "list", "-json", "./...")
+	cmd.Dir = projectRoot
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(out))
+
+	var files []string
+	for dec.More() {
+		var pkg goListPkg
+		if err := dec.Decode(&pkg); err != nil {
+			return nil, err
+		}
+
+		for _, f := range pkg.GoFiles {
+			files = append(files, filepath.Join(pkg.Dir, f))
+		}
+	}
+	return files, nil
 }
