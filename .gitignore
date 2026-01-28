@@ -2,7 +2,8 @@ build/bin
 node_modules
 frontend/dist
 
+.DS_STORE
+
 package.json.md5
 trace_data
 tmp
-graph
