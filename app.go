@@ -125,11 +125,12 @@ func (a *App) Trace() (string, error) {
 		if err := os.MkdirAll(filepath.Dir(dstFile), 0755); err != nil {
 			return "", err
 		}
-		if err := trace.StaticInsertTrace(a.projectRoot, tmpRoot, goFile, dstFile); err != nil {
+		if err := trace.StaticInsertTrace(a.ctx, tmpRoot, goFile, dstFile); err != nil {
 			return "", err
 		}
+		runtime.LogInfof(a.ctx, "inserted trace code successfully: %s", goFile)
 	}
-	runtime.LogInfo(a.ctx, "ast insert succeeded")
+	runtime.LogInfo(a.ctx, "inserted runtime/trace successfully")
 
 	// トレース実行
 	mainRel, err := filepath.Rel(a.projectRoot, a.mainFile)
@@ -137,14 +138,14 @@ func (a *App) Trace() (string, error) {
 		return "", err
 	}
 	tmpMain := filepath.Join(tmpRoot, mainRel)
-	if err := trace.RunWithTrace(tmpMain); err != nil {
+	if err := trace.RunWithTrace(a.ctx, tmpRoot, tmpMain); err != nil {
 		return "", err
 	}
 	runtime.LogInfof(a.ctx, "trace tmpMain: %s", tmpMain)
 
 	// トレースデータの解析
 	traceFile := filepath.Join(tmpRoot, "trace.out")
-	steps, err := trace.ParseTrace(traceFile)
+	steps, err := trace.Parse(traceFile)
 	if err != nil {
 		return "", err
 	}
