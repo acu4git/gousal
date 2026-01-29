@@ -1,6 +1,6 @@
 import { useLoading } from "@/context/loading/LoadingContext";
 import Layout from "@/layout";
-import View from "@/pages/view";
+import View from "@/pages/View";
 import { HashRouter, Route, Routes } from "react-router-dom";
 
 const AppRouter = () => {
