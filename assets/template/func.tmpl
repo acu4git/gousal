@@ -1,17 +1,17 @@
 var {{.FileVar}} *os.File
 
 func {{.InitFunc}}() {
-    file := filepath.Join({{.ProjectRoot}}, "trace.out")
-    f, err := os.Create(file)
+    file := {{.PkgAliasFILEPATH}}.Join({{.ProjectRoot}}, "trace.out")
+    f, err := {{.PkgAliasOS}}.Create(file)
     if err != nil {
         panic(err)
     }
-    trace.Start(f)
+    {{.PkgAliasTRACE}}.Start(f)
     {{.FileVar}} = f
 }
 
 func {{.StopFunc}}() {
-    trace.Stop()
+    {{.PkgAliasTRACE}}.Stop()
     if err := {{.FileVar}}.Close(); err != nil {
         panic(err)
     }

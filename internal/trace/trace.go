@@ -19,6 +19,18 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
+const (
+	KEY_PKG_RUNTIME_TRACE = "runtime/trace"
+	KEY_PKG_CONTEXT       = "context"
+	KEY_PKG_OS            = "os"
+	KEY_PKG_PATH_FILEPATH = "path/filepath"
+
+	ALIAS_RUNTIME_TRACE = "__rtrace__"
+	ALIAS_CONTEXT       = "__context__"
+	ALIAS_OS            = "__os__"
+	ALIAS_PATH_FILEPATH = "__pfilepath__"
+)
+
 func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	// Go file -> AST
 	fset := token.NewFileSet()
@@ -57,11 +69,12 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
 	pos := fset.Position(fn.Pos())
 	funcDefID := fmt.Sprintf("%s:%d:%d#%s", pos.Filename, pos.Line, pos.Column, fn.Name.Name)
+	suffix := util.HexSuffix()
 
 	// context.Background()
 	ctxExpr := &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
-			X:   ast.NewIdent("context"),
+			X:   ast.NewIdent(ALIAS_CONTEXT + suffix),
 			Sel: ast.NewIdent("Background"),
 		},
 	}
@@ -70,7 +83,7 @@ func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *a
 	enterCall := &ast.ExprStmt{
 		X: &ast.CallExpr{
 			Fun: &ast.SelectorExpr{
-				X:   ast.NewIdent("trace"),
+				X:   ast.NewIdent(ALIAS_RUNTIME_TRACE + suffix),
 				Sel: ast.NewIdent("Log"),
 			},
 			Args: []ast.Expr{
@@ -85,7 +98,7 @@ func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *a
 	exitDefer := &ast.DeferStmt{
 		Call: &ast.CallExpr{
 			Fun: &ast.SelectorExpr{
-				X:   ast.NewIdent("trace"),
+				X:   ast.NewIdent(ALIAS_RUNTIME_TRACE + suffix),
 				Sel: ast.NewIdent("Log"),
 			},
 			Args: []ast.Expr{
@@ -101,15 +114,17 @@ func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *a
 		fn.Body.List...,
 	)
 
-	// 必須パッケージ
-	pkgs := map[string]bool{
-		"runtime/trace": false,
-		"context":       false,
+	// 必須パッケージ(key: pkgName, value: alias)
+	PkgAliases := map[string]string{
+		KEY_PKG_CONTEXT:       ALIAS_CONTEXT + suffix,
+		KEY_PKG_RUNTIME_TRACE: ALIAS_RUNTIME_TRACE + suffix,
 	}
 
 	if fn.Name.Name == "main" && file.Name.Name == "main" {
 		// runtime/trace.Start/Stopを行うために追加する処理
-		suffix := util.HexSuffix()
+		PkgAliases[KEY_PKG_OS] = ALIAS_OS + suffix
+		PkgAliases[KEY_PKG_PATH_FILEPATH] = ALIAS_PATH_FILEPATH + suffix
+
 		prefix := "__trace_" + suffix
 		funcNameInit := prefix + "_init"
 		funcNameStop := prefix + "_stop"
@@ -131,10 +146,13 @@ func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *a
 		)
 
 		data := map[string]string{
-			"FileVar":     fileVar,
-			"InitFunc":    funcNameInit,
-			"StopFunc":    funcNameStop,
-			"ProjectRoot": strconv.Quote(tmpRoot),
+			"FileVar":          fileVar,
+			"InitFunc":         funcNameInit,
+			"StopFunc":         funcNameStop,
+			"ProjectRoot":      strconv.Quote(tmpRoot),
+			"PkgAliasFILEPATH": PkgAliases[KEY_PKG_PATH_FILEPATH],
+			"PkgAliasOS":       PkgAliases[KEY_PKG_OS],
+			"PkgAliasTRACE":    PkgAliases[KEY_PKG_RUNTIME_TRACE],
 		}
 		__src, err := renderTemplate("func.tmpl", data)
 		if err != nil {
@@ -146,29 +164,12 @@ func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *a
 			return err
 		}
 		file.Decls = append(file.Decls, helperFile.Decls...)
-
-		pkgs["os"] = false
-		pkgs["path/filepath"] = false
-		pkgs["log"] = false
 	}
-
-	// 検出
-	for _, imp := range file.Imports {
-		path, err := strconv.Unquote(imp.Path.Value)
-		if err != nil {
-			return err
-		}
-		pkgs[path] = true
-	}
-	// runtime.LogInfo(ctx, "pkg detection done")
 
 	// 追加
-	for pkg, ok := range pkgs {
-		if !ok {
-			astutil.AddImport(fset, file, pkg)
-		}
+	for pkg, alias := range PkgAliases {
+		astutil.AddNamedImport(fset, file, alias, pkg)
 	}
-	// runtime.LogInfo(ctx, "AddImport done")
 
 	return nil
 }
