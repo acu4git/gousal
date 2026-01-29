@@ -1,4 +1,4 @@
-var {{.FileVar}} *os.File
+var {{.FileVar}} *{{.PkgAliasOS}}.File
 
 func {{.InitFunc}}() {
     file := {{.PkgAliasFILEPATH}}.Join({{.ProjectRoot}}, "trace.out")
