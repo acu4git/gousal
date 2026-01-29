@@ -92,11 +92,11 @@ func (a *App) SelectGoProject() (string, error) {
 	return res, nil
 }
 
-func (a *App) Trace() (string, error) {
+func (a *App) Trace() error {
 	// プロジェクトのクローン
 	tmpRoot, err := internal.MakeTmpProjectRoot(a.projectRoot)
 	if err != nil {
-		return "", err
+		return err
 	}
 	ignoredNames := map[string]bool{
 		".git":                 true, // Git履歴
@@ -107,26 +107,26 @@ func (a *App) Trace() (string, error) {
 		"build":                true, // 実行バイナリなど
 	}
 	if err := internal.CopyProject(a.projectRoot, tmpRoot, ignoredNames); err != nil {
-		return "", err
+		return err
 	}
 	runtime.LogInfo(a.ctx, "project clone succeeded")
 
 	// runtime/traceの挿入
 	goFiles, err := internal.ListGoFiles(a.projectRoot)
 	if err != nil {
-		return "", err
+		return err
 	}
 	for _, goFile := range goFiles {
 		rel, err := filepath.Rel(a.projectRoot, goFile)
 		if err != nil {
-			return "", err
+			return err
 		}
 		dstFile := filepath.Join(tmpRoot, rel)
 		if err := os.MkdirAll(filepath.Dir(dstFile), 0755); err != nil {
-			return "", err
+			return err
 		}
 		if err := trace.StaticInsertTrace(a.ctx, tmpRoot, goFile, dstFile); err != nil {
-			return "", err
+			return err
 		}
 		runtime.LogInfof(a.ctx, "inserted trace code successfully: %s", goFile)
 	}
@@ -135,11 +135,11 @@ func (a *App) Trace() (string, error) {
 	// トレース実行
 	mainRel, err := filepath.Rel(a.projectRoot, a.mainFile)
 	if err != nil {
-		return "", err
+		return err
 	}
 	tmpMain := filepath.Join(tmpRoot, mainRel)
 	if err := trace.RunWithTrace(a.ctx, tmpRoot, tmpMain); err != nil {
-		return "", err
+		return err
 	}
 	runtime.LogInfof(a.ctx, "trace tmpMain: %s", tmpMain)
 
@@ -147,14 +147,14 @@ func (a *App) Trace() (string, error) {
 	traceFile := filepath.Join(tmpRoot, "trace.out")
 	steps, err := trace.Parse(traceFile)
 	if err != nil {
-		return "", err
+		return err
 	}
 	runtime.LogInfo(a.ctx, "parse succeeded")
 
 	// GraphState初期化
 	gs, cancel, err := graph.NewGraphState(a.ctx, steps)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if a.cancel != nil {
 		a.cancel()
@@ -164,14 +164,20 @@ func (a *App) Trace() (string, error) {
 	runtime.LogInfo(a.ctx, "init GraphState")
 
 	if err := a.gs.Load(); err != nil {
-		return "", err
+		return err
 	}
 	runtime.LogInfo(a.ctx, "load GraphState")
 
-	return a.Step()
+	return err
 }
 
-func (a *App) Step() (string, error) {
+type StepResult struct {
+	SVG        string `json:"svg"`
+	Affordable bool   `json:"affordable"`
+}
+
+func (a *App) Step() (StepResult, error) {
 	runtime.LogInfo(a.ctx, "Step")
-	return a.gs.Step()
+	svg, ok, err := a.gs.Step()
+	return StepResult{SVG: svg, Affordable: ok}, err
 }
