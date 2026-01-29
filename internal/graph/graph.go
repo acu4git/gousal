@@ -84,8 +84,7 @@ func (gs *GraphState) Load() error {
 		if _, ok := gs.funcNodeMap[step.GID]; !ok {
 			gs.funcNodeMap[step.GID] = make(map[string]*cgraph.Node)
 		}
-		funcNode, ok := gs.funcNodeMap[step.GID][step.Func]
-		if !ok {
+		if _, ok := gs.funcNodeMap[step.GID][step.Func]; !ok {
 			funcNode, err := goCluster.CreateNodeByName(fmt.Sprintf("%s-gid%d", step.Func, step.GID))
 			if err != nil {
 				return fmt.Errorf("failed to create func node: %s; %w", step.Func, err)
@@ -103,9 +102,8 @@ func (gs *GraphState) Load() error {
 				gs.callEdgeMap[step.GID] = make(map[string]*cgraph.Edge)
 			}
 			label := fmt.Sprintf("%s:%d -> %s:%d", prev.Func, prev.GID, step.Func, step.GID)
-			callEdge, ok := gs.callEdgeMap[step.GID][label]
-			if !ok {
-				callEdge, err = gs.g.CreateEdgeByName(label, gs.funcNodeMap[prev.GID][prev.Func], funcNode)
+			if _, ok := gs.callEdgeMap[step.GID][label]; !ok {
+				callEdge, err := gs.g.CreateEdgeByName(label, gs.funcNodeMap[prev.GID][prev.Func], gs.funcNodeMap[step.GID][step.Func])
 				if err != nil {
 					return fmt.Errorf("failed to create edge: %s; %w", label, err)
 				}
@@ -119,26 +117,29 @@ func (gs *GraphState) Load() error {
 	return nil
 }
 
-func (gs *GraphState) Step() (string, error) {
+func (gs *GraphState) Step() (string, bool, error) {
+	if gs.next >= len(gs.steps) {
+		return "", false, nil
+	}
 	step := gs.steps[gs.next]
 	// goroutine subgraph
 	goCluster, ok := gs.goroutineMap[step.GID]
 	if !ok {
 		text := fmt.Sprintf("failed to Step(): %s%d is not created", HEADER_CLUSTER_GOROUTINE, step.GID)
-		return "", errors.New(text)
+		return "", false, errors.New(text)
 	}
 	goCluster.SetStyle(STYLE_FILLED)
 
 	// func node
 	if _, ok := gs.funcNodeMap[step.GID]; !ok {
 		text := fmt.Sprintf("failed to Step(): funcNodeMap[%d] is not created", step.GID)
-		return "", errors.New(text)
+		return "", false, errors.New(text)
 	}
 	funcNode, ok := gs.funcNodeMap[step.GID][step.Func]
 	if !ok {
 		name := fmt.Sprintf("%s-gid%d", step.Func, step.GID)
 		text := fmt.Sprintf("failed to Step(): funcNode(%s) is not created", name)
-		return "", errors.New(text)
+		return "", false, errors.New(text)
 	}
 	funcNode.SetStyle(STYLE_FILLED)
 
@@ -146,13 +147,13 @@ func (gs *GraphState) Step() (string, error) {
 	if gs.next > 0 {
 		if _, ok := gs.callEdgeMap[step.GID]; !ok {
 			text := fmt.Sprintf("failed to Step(): callEdgeMap[%d] is not created", step.GID)
-			return "", errors.New(text)
+			return "", false, errors.New(text)
 		}
 		label := fmt.Sprintf("%s:%d -> %s:%d", gs.steps[gs.next-1].Func, gs.steps[gs.next-1].GID, step.Func, step.GID)
 		callEdge, ok := gs.callEdgeMap[step.GID][label]
 		if !ok {
 			text := fmt.Sprintf("failed to Step(): funcNodeMap[%d] is not created", step.GID)
-			return "", errors.New(text)
+			return "", false, errors.New(text)
 		}
 		callEdge.SetStyle(STYLE_FILLED)
 	}
@@ -160,8 +161,8 @@ func (gs *GraphState) Step() (string, error) {
 
 	var buf bytes.Buffer
 	if err := gs.gviz.Render(gs.ctx, gs.g, graphviz.SVG, &buf); err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	return buf.String(), nil
+	return buf.String(), true, nil
 }
