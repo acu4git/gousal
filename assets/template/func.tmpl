@@ -4,7 +4,7 @@ func {{.InitFunc}}() {
     file := filepath.Join({{.ProjectRoot}}, "trace.out")
     f, err := os.Create(file)
     if err != nil {
-        log.Fatalln(err)
+        panic(err)
     }
     trace.Start(f)
     {{.FileVar}} = f
@@ -13,6 +13,6 @@ func {{.InitFunc}}() {
 func {{.StopFunc}}() {
     trace.Stop()
     if err := {{.FileVar}}.Close(); err != nil {
-        log.Fatalln(err)
+        panic(err)
     }
 }
