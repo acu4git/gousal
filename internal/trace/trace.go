@@ -32,6 +32,8 @@ const (
 )
 
 func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
+	suffix := util.HexSuffix()
+
 	// Go file -> AST
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, src, nil, parser.ParseComments)
@@ -51,7 +53,7 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	})
 
 	for _, fn := range funcs {
-		if err := insertTrace(ctx, tmpRoot, fset, file, fn); err != nil {
+		if err := insertTrace(ctx, tmpRoot, suffix, fset, file, fn); err != nil {
 			return err
 		}
 	}
@@ -66,10 +68,9 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	return nil
 }
 
-func insertTrace(_ context.Context, tmpRoot string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
+func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
 	pos := fset.Position(fn.Pos())
 	funcDefID := fmt.Sprintf("%s:%d:%d#%s", pos.Filename, pos.Line, pos.Column, fn.Name.Name)
-	suffix := util.HexSuffix()
 
 	// context.Background()
 	ctxExpr := &ast.CallExpr{
