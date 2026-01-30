@@ -118,9 +118,6 @@ func (gs *GraphState) Load() error {
 }
 
 func (gs *GraphState) Step() (string, bool, error) {
-	if gs.next >= len(gs.steps) {
-		return "", false, nil
-	}
 	step := gs.steps[gs.next]
 	// goroutine subgraph
 	goCluster, ok := gs.goroutineMap[step.GID]
@@ -162,6 +159,10 @@ func (gs *GraphState) Step() (string, bool, error) {
 	var buf bytes.Buffer
 	if err := gs.gviz.Render(gs.ctx, gs.g, graphviz.SVG, &buf); err != nil {
 		return "", false, err
+	}
+
+	if gs.next >= len(gs.steps) {
+		return buf.String(), false, nil
 	}
 
 	return buf.String(), true, nil
