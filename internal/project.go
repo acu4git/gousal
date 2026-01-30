@@ -10,8 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"wails-test/internal/util"
+	"time"
 )
 
 const (
@@ -19,7 +20,8 @@ const (
 )
 
 func MakeTmpProjectRoot(projectRoot string) (string, error) {
-	suffix := util.HexSuffix()
+	// suffix := util.HexSuffix()
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
 	tmpRoot := filepath.Join(projectRoot, TEMP_DIR_NAME, "trace-"+suffix)
 
 	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
