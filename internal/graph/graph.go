@@ -132,7 +132,7 @@ func (gs *GraphState) Load() (string, error) {
 				return "", err
 			}
 
-			// transisition edge
+			// transition edge
 			if len(gs.fnStack[step.GID]) > 0 {
 				if _, err := gs.getOrCreateEdge(step); err != nil {
 					return "", nil
