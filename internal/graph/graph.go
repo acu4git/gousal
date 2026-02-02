@@ -281,5 +281,5 @@ func (gs *GraphState) getOrCreateEdge(step trace.StepInfo) (*cgraph.Edge, error)
 		callEdge.SetStyle(STYLE_DASHED)
 		gs.callEdgeMap[step.GID][label] = callEdge
 	}
-	return nil, nil
+	return gs.callEdgeMap[step.GID][label], nil
 }
