@@ -227,6 +227,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 	return buf.String(), true, nil
 }
 
+// StepInfo内部のGoroutine IDに対応するサブグラフがあれば取得し，無ければ"style=dashed"で作成する．
 func (gs *GraphState) getOrCreateCluster(step trace.StepInfo) (*cgraph.Graph, error) {
 	if _, ok := gs.goroutineMap[step.GID]; !ok {
 		name := fmt.Sprintf("%s%d", HEADER_CLUSTER_GOROUTINE, step.GID)
@@ -242,6 +243,7 @@ func (gs *GraphState) getOrCreateCluster(step trace.StepInfo) (*cgraph.Graph, er
 	return gs.goroutineMap[step.GID], nil
 }
 
+// Goroutine IDに対応した関数ノードがあれば取得し，無ければ"style=dashed"で作成する．s
 func (gs *GraphState) getOrCreateNode(goCluster *cgraph.Graph, step trace.StepInfo) (*cgraph.Node, error) {
 	if _, ok := gs.funcNodeMap[step.GID]; !ok {
 		gs.funcNodeMap[step.GID] = make(map[string]*cgraph.Node)
@@ -261,6 +263,7 @@ func (gs *GraphState) getOrCreateNode(goCluster *cgraph.Graph, step trace.StepIn
 	return gs.funcNodeMap[step.GID][step.Func], nil
 }
 
+// Goroutine IDが同じであるような新しい関数ノードと親関数ノードの有向辺があれば取得し，無ければ有向辺で繋ぐ．
 func (gs *GraphState) getOrCreateEdge(step trace.StepInfo) (*cgraph.Edge, error) {
 	if _, ok := gs.callEdgeMap[step.GID]; !ok {
 		gs.callEdgeMap[step.GID] = make(map[string]*cgraph.Edge)
