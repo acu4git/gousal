@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
@@ -45,9 +46,9 @@ func IsGoProject(path string) (bool, error) {
 	return true, nil
 }
 
-func SearchMainAll(root string) ([]string, error) {
-	var mainFiles []string
-	fset := token.NewFileSet()
+func SearchMainAll(root string) (map[string][]string, error) {
+	dirs := make(map[string][]string)
+	result := make(map[string][]string)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -68,20 +69,54 @@ func SearchMainAll(root string) ([]string, error) {
 		if strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		// 4. ファイルをパースしてパッケージ名を判定
-		// parser.PackageClauseOnly を指定すると、冒頭の package 宣言だけ読んで止まるので高速
-		f, err := parser.ParseFile(fset, path, nil, parser.PackageClauseOnly)
-		if err != nil {
-			return err
-		}
-		if f.Name.Name == "main" {
-			mainFiles = append(mainFiles, path)
-		}
+
+		dir := filepath.Dir(path)
+		dirs[dir] = append(dirs[dir], path)
 
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return mainFiles, err
+	fset := token.NewFileSet()
+	// mainDirs := make([]string, 0)
+
+	for dir, files := range dirs {
+
+		hasMainPkg := false
+		hasMainFunc := false
+
+		mainFiles := make([]string, 0)
+
+		for _, file := range files {
+			f, err := parser.ParseFile(fset, file, nil, 0)
+			if err != nil {
+				continue
+			}
+
+			if f.Name.Name != "main" {
+				continue
+			}
+
+			hasMainPkg = true
+			mainFiles = append(mainFiles, file)
+
+			for _, decl := range f.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok {
+					if fn.Name.Name == "main" && fn.Recv == nil {
+						hasMainFunc = true
+					}
+				}
+			}
+		}
+
+		if hasMainPkg && hasMainFunc {
+			result[dir] = mainFiles
+		}
+	}
+
+	return result, err
 }
 
 // CopyProject: ソースから宛先へ再帰的にコピー (除外リスト対応)
