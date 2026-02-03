@@ -10,12 +10,16 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 	etemp "wails-test/assets/template"
 	"wails-test/internal/util"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/ast/astutil"
 )
 
@@ -69,8 +73,7 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 }
 
 func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
-	pos := fset.Position(fn.Pos())
-	funcDefID := fmt.Sprintf("%s:%d:%d#%s", pos.Filename, pos.Line, pos.Column, fn.Name.Name)
+	funcDefID := funcDefID(fset, file, fn)
 
 	// context.Background()
 	ctxExpr := &ast.CallExpr{
@@ -173,6 +176,69 @@ func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet,
 	}
 
 	return nil
+}
+
+func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) string {
+	pos := fset.Position(fn.Pos())
+	funcPosInfo := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
+	funcName := packageID(fset, file)
+	if fn.Recv != nil && len(fn.Recv.List) > 0 {
+		recv := receiverTypeString(fn.Recv.List[0].Type)
+		funcName += fmt.Sprintf(".(%s)", recv)
+	}
+	funcName += fmt.Sprintf(".%s", fn.Name.Name)
+	if params := typeParamNames(fn); len(params) > 0 {
+		funcName += fmt.Sprintf("[%s]", strings.Join(params, ","))
+	}
+	if fn.Name.Name == "main" && file.Name.Name == "main" {
+		funcName = "main.main"
+	}
+	return fmt.Sprintf("%s#%s", funcPosInfo, funcName)
+}
+
+func packageID(fset *token.FileSet, file *ast.File) string {
+	projectRoot, _ := os.Getwd()
+	modBytes, _ := os.ReadFile(filepath.Join(projectRoot, "go.mod"))
+	modFile, _ := modfile.Parse("go.mod", modBytes, nil)
+	pos := fset.Position(file.Pos())
+	rel, _ := filepath.Rel(projectRoot, filepath.Dir(pos.Filename))
+	return path.Join(modFile.Module.Mod.Path, rel)
+}
+
+func modulePath() string {
+	projectRoot, _ := os.Getwd()
+	modBytes, _ := os.ReadFile(filepath.Join(projectRoot, "go.mod"))
+	modFile, _ := modfile.Parse("go.mod", modBytes, nil)
+	return modFile.Module.Mod.Path
+}
+
+func receiverTypeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return "*" + receiverTypeString(t.X)
+	case *ast.SelectorExpr:
+		return receiverTypeString(t.X) + "." + t.Sel.Name
+	case *ast.IndexExpr:
+		return receiverTypeString(t.X) + "[T]"
+	default:
+		return fmt.Sprintf("<%T>", expr)
+	}
+}
+
+func typeParamNames(f *ast.FuncDecl) []string {
+	if f.Type.TypeParams == nil {
+		return nil
+	}
+
+	var params []string
+	for _, field := range f.Type.TypeParams.List {
+		for _, name := range field.Names {
+			params = append(params, name.Name)
+		}
+	}
+	return params
 }
 
 func renderTemplate(pattern string, data any) (string, error) {
