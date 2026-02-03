@@ -255,8 +255,10 @@ func renderTemplate(pattern string, data any) (string, error) {
 	return buf.String(), nil
 }
 
-func RunWithTrace(ctx context.Context, tmpRoot, mainFile string) error {
-	cmd := exec.Command("go", "run", mainFile)
+func RunWithTrace(ctx context.Context, tmpRoot string, files ...string) error {
+	args := []string{"run"}
+	args = append(args, files...)
+	cmd := exec.Command("go", args...)
 	cmd.Dir = tmpRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
