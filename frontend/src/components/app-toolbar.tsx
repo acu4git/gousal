@@ -5,11 +5,11 @@ interface Props {
   step: () => Promise<void>;
   handleClickAuto: () => Promise<void>;
   isReady: boolean;
-  isTerm: boolean;
+  canStep: boolean;
   isAuto: boolean;
 }
 
-const Toolbar = ({ selectGoProject, step, handleClickAuto, isReady, isTerm, isAuto }: Props) => {
+const Toolbar = ({ selectGoProject, step, handleClickAuto, isReady, canStep, isAuto }: Props) => {
   return (
     <div className="text-center h-10 border-b flex items-center px-2 pb-2 justify-between">
       <Button
@@ -22,7 +22,7 @@ const Toolbar = ({ selectGoProject, step, handleClickAuto, isReady, isTerm, isAu
         <Button
           className="bg-blue-600 hover:cursor-pointer hover:bg-blue-500"
           onClick={step}
-          disabled={!isReady || isTerm || isAuto}
+          disabled={!isReady || !canStep || isAuto}
         >
           Next
           {/* <MdNextPlan /> */}
@@ -30,7 +30,7 @@ const Toolbar = ({ selectGoProject, step, handleClickAuto, isReady, isTerm, isAu
         {isAuto ? (
           <Button
             className="bg-red-600 hover:cursor-pointer hover:bg-red-500"
-            disabled={!isReady || isTerm}
+            disabled={!isReady || !canStep}
             onClick={handleClickAuto}
           >
             Stop
@@ -39,7 +39,7 @@ const Toolbar = ({ selectGoProject, step, handleClickAuto, isReady, isTerm, isAu
         ) : (
           <Button
             className="bg-green-600 hover:cursor-pointer hover:bg-green-500"
-            disabled={!isReady || isTerm}
+            disabled={!isReady || !canStep}
             onClick={handleClickAuto}
           >
             Auto Play
