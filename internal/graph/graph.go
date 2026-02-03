@@ -16,6 +16,7 @@ const (
 	STYLE_FILLED             = "filled"
 	STYLE_INVIS              = "invis"
 	STYLE_DASHED             = "dashed"
+	COLOR_BLACK              = "black"
 	COLOR_WHITE              = "white"
 	COLOR_GRAY               = "gray"
 	COLOR_LIGHTGREEN         = "lightgreen"
@@ -62,110 +63,51 @@ func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, C
 		goroutineMap: make(map[int64]*cgraph.Graph),
 		funcNodeMap:  make(map[int64]map[string]*cgraph.Node),
 		callEdgeMap:  make(map[int64]map[string]*cgraph.Edge),
+		fnStack:      make(map[int64][]string),
 	}, cleanup, nil
 }
 
 func (gs *GraphState) Load() (string, error) {
-	// var prev *trace.StepInfo
-
 	for _, step := range gs.steps {
-		// 	// goroutine subgraph
-		// 	goCluster, ok := gs.goroutineMap[step.GID]
-		// 	if !ok {
-		// 		name := fmt.Sprintf("%s%d", HEADER_CLUSTER_GOROUTINE, step.GID)
-		// 		goCluster, err = gs.g.CreateSubGraphByName(name)
-		// 		if err != nil {
-		// 			return "", fmt.Errorf("failed to init goroutine subgraph: %s; %w", name, err)
-		// 		}
-		// 		goCluster.SetLabel(fmt.Sprintf("Goroutine %d", step.GID))
-		// 		// goCluster.SetStyle(STYLE_INVIS)
-		// 		goCluster.SetStyle(STYLE_DASHED)
-		// 		// goCluster.SetBackgroundColor(COLOR_GRAY)
-		// 		gs.goroutineMap[step.GID] = goCluster
-		// 	}
-
-		// 	// func node
-		// 	if _, ok := gs.funcNodeMap[step.GID]; !ok {
-		// 		gs.funcNodeMap[step.GID] = make(map[string]*cgraph.Node)
-		// 	}
-		// 	if _, ok := gs.funcNodeMap[step.GID][step.Func]; !ok {
-		// 		funcNode, err := goCluster.CreateNodeByName(fmt.Sprintf("%s-gid%d", step.Func, step.GID))
-		// 		if err != nil {
-		// 			return "", fmt.Errorf("failed to create func node: %s; %w", step.Func, err)
-		// 		}
-		// 		funcNode.SetLabel(step.Func)
-		// 		// funcNode.SetStyle(STYLE_INVIS)
-		// 		funcNode.SetStyle(STYLE_DASHED)
-		// 		// funcNode.SetFillColor(COLOR_WHITE)
-		// 		gs.funcNodeMap[step.GID][step.Func] = funcNode
-		// 	}
-
-		// 	// transisition edge
-		// 	if prev != nil && prev.GID == step.GID {
-		// 		if _, ok := gs.callEdgeMap[step.GID]; !ok {
-		// 			gs.callEdgeMap[step.GID] = make(map[string]*cgraph.Edge)
-		// 		}
-		// 		label := fmt.Sprintf("%s:%d -> %s:%d", prev.Func, prev.GID, step.Func, step.GID)
-		// 		if _, ok := gs.callEdgeMap[step.GID][label]; !ok {
-		// 			callEdge, err := gs.g.CreateEdgeByName(label, gs.funcNodeMap[prev.GID][prev.Func], gs.funcNodeMap[step.GID][step.Func])
-		// 			if err != nil {
-		// 				return "", fmt.Errorf("failed to create edge: %s; %w", label, err)
-		// 			}
-		// 			// callEdge.SetStyle(STYLE_INVIS)
-		// 			callEdge.SetStyle(STYLE_DASHED)
-		// 			gs.callEdgeMap[step.GID][label] = callEdge
-		// 		}
-		// 	}
-		// 	cpy := step
-		// 	prev = &cpy
-
 		switch step.Mode {
 		case trace.MODE_FUNC_ENTER:
 			// goroutine subgraph
 			goCluster, err := gs.getOrCreateCluster(step)
 			if err != nil {
-				return "", nil
+				return "", fmt.Errorf("failed to get or create cluster: %w", err)
 			}
+			goCluster.SetStyle(STYLE_DASHED)
 
 			// func node
-			if _, err := gs.getOrCreateNode(goCluster, step); err != nil {
-				return "", err
+			fnNode, err := gs.getOrCreateNode(goCluster, step)
+			if err != nil {
+				return "", fmt.Errorf("failed to get or create node: %w", err)
 			}
+			fnNode.SetStyle(STYLE_DASHED)
 
 			// transition edge
 			if len(gs.fnStack[step.GID]) > 0 {
-				if _, err := gs.getOrCreateEdge(step); err != nil {
-					return "", nil
+				callEdge, err := gs.getOrCreateEdge(step)
+				if err != nil {
+					return "", fmt.Errorf("failed to get or create edge: %w", err)
 				}
+				callEdge.SetStyle(STYLE_DASHED)
 			}
 
 			gs.fnStack[step.GID] = append(gs.fnStack[step.GID], step.Func)
 		case trace.MODE_FUNC_EXIT:
-			// 	goCluster, err := gs.getOrCreateCluster(step)
-			// 	if err != nil {
-			// 		return "", err
-			// 	}
-			// 	fnNode, err := gs.getOrCreateNode(goCluster, step)
-			// 	if err != nil {
-			// 		return "", err
-			// 	}
-			// 	// remove node
-			// 	fnNode.SetStyle(STYLE_DASHED)
-
-			// 	top := len(gs.fnStack[step.GID]) - 1
-			// 	if top > 0 {
-			// 		// remove edge
-			// 		gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
-			// 		callEdge, err := gs.getOrCreateEdge(step)
-			// 		if err != nil {
-			// 			return "", err
-			// 		}
-			// 		callEdge.SetStyle(STYLE_DASHED)
-			// 	} else {
-			// 		// remove subgraph
-			// 		goCluster.SetBackgroundColor(COLOR_GRAY)
-			// 	}
+			if len(gs.fnStack[step.GID]) == 0 {
+				text := fmt.Sprintf("failed to Load(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.MODE_FUNC_EXIT, step.GID, step.Func)
+				return "", errors.New(text)
+			}
+			top := len(gs.fnStack[step.GID]) - 1
+			gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
 		}
+	}
+
+	// 全体グラフの作成に用いた関数スタックはStep用に初期化しておく．
+	for k := range gs.fnStack {
+		delete(gs.fnStack, k)
 	}
 
 	var buf bytes.Buffer
@@ -178,41 +120,92 @@ func (gs *GraphState) Load() (string, error) {
 
 func (gs *GraphState) Step() (string, bool, error) {
 	step := gs.steps[gs.next]
-	// goroutine subgraph
-	goCluster, ok := gs.goroutineMap[step.GID]
-	if !ok {
-		text := fmt.Sprintf("failed to Step(): %s%d is not created", HEADER_CLUSTER_GOROUTINE, step.GID)
-		return "", false, errors.New(text)
-	}
-	goCluster.SetStyle(STYLE_FILLED)
 
-	// func node
-	if _, ok := gs.funcNodeMap[step.GID]; !ok {
-		text := fmt.Sprintf("failed to Step(): funcNodeMap[%d] is not created", step.GID)
-		return "", false, errors.New(text)
-	}
-	funcNode, ok := gs.funcNodeMap[step.GID][step.Func]
-	if !ok {
-		name := fmt.Sprintf("%s-gid%d", step.Func, step.GID)
-		text := fmt.Sprintf("failed to Step(): funcNode(%s) is not created", name)
-		return "", false, errors.New(text)
-	}
-	funcNode.SetStyle(STYLE_FILLED)
-
-	// transisition edge
-	if gs.next > 0 {
-		if _, ok := gs.callEdgeMap[step.GID]; !ok {
-			text := fmt.Sprintf("failed to Step(): callEdgeMap[%d] is not created", step.GID)
-			return "", false, errors.New(text)
-		}
-		label := fmt.Sprintf("%s:%d -> %s:%d", gs.steps[gs.next-1].Func, gs.steps[gs.next-1].GID, step.Func, step.GID)
-		callEdge, ok := gs.callEdgeMap[step.GID][label]
+	switch step.Mode {
+	case trace.MODE_FUNC_ENTER:
+		// goroutine subgraph
+		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
-			text := fmt.Sprintf("failed to Step(): funcNodeMap[%d] is not created", step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): %s%d is not created", trace.MODE_FUNC_ENTER, HEADER_CLUSTER_GOROUTINE, step.GID)
 			return "", false, errors.New(text)
 		}
-		callEdge.SetStyle(STYLE_FILLED)
+		goCluster.SetStyle(STYLE_FILLED)
+		goCluster.SetBackgroundColor(COLOR_LIGHTGREEN)
+
+		// func node
+		if _, ok := gs.funcNodeMap[step.GID]; !ok {
+			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.MODE_FUNC_ENTER, step.GID)
+			return "", false, errors.New(text)
+		}
+		funcNode, ok := gs.funcNodeMap[step.GID][step.Func]
+		if !ok {
+			name := fmt.Sprintf("%s-gid%d", step.Func, step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): funcNode(%s) is not created", trace.MODE_FUNC_ENTER, name)
+			return "", false, errors.New(text)
+		}
+		funcNode.SetStyle(STYLE_FILLED)
+		funcNode.SetColor(COLOR_WHITE)
+
+		// transisition edge
+		if len(gs.fnStack[step.GID]) > 0 {
+			if _, ok := gs.callEdgeMap[step.GID]; !ok {
+				text := fmt.Sprintf("failed to Step(@%s): callEdgeMap[%d] is not created", trace.MODE_FUNC_ENTER, step.GID)
+				return "", false, errors.New(text)
+			}
+			top := len(gs.fnStack[step.GID]) - 1
+			label := fmt.Sprintf("%s:%d -> %s:%d", gs.fnStack[step.GID][top], step.GID, step.Func, step.GID)
+			callEdge, ok := gs.callEdgeMap[step.GID][label]
+			if !ok {
+				text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.MODE_FUNC_ENTER, step.GID)
+				return "", false, errors.New(text)
+			}
+			callEdge.SetStyle(STYLE_FILLED)
+			callEdge.SetColor(COLOR_RED)
+		}
+
+		gs.fnStack[step.GID] = append(gs.fnStack[step.GID], step.Func)
+	case trace.MODE_FUNC_EXIT:
+		if len(gs.fnStack[step.GID]) == 0 {
+			text := fmt.Sprintf("failed to Step(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.MODE_FUNC_EXIT, step.GID, step.Func)
+			return "", false, errors.New(text)
+		}
+
+		goCluster, ok := gs.goroutineMap[step.GID]
+		if !ok {
+			text := fmt.Sprintf("failed to Step(%s): goroutineMap[%d] is not created", trace.MODE_FUNC_EXIT, step.GID)
+			return "", false, errors.New(text)
+		}
+
+		if _, ok := gs.funcNodeMap[step.GID]; !ok {
+			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.MODE_FUNC_ENTER, step.GID)
+			return "", false, errors.New(text)
+		}
+		fnNode, ok := gs.funcNodeMap[step.GID][step.Func]
+		if !ok {
+			text := fmt.Sprintf("failed to Step(%s): funcNode(%s) is not created is not created", trace.MODE_FUNC_EXIT, step.Func)
+			return "", false, errors.New(text)
+		}
+		fnNode.SetStyle(STYLE_DASHED)
+		fnNode.SetColor(COLOR_BLACK)
+
+		top := len(gs.fnStack[step.GID]) - 1
+		if top > 0 {
+			label := fmt.Sprintf("%s:%d -> %s:%d", gs.fnStack[step.GID][top-1], step.GID, gs.fnStack[step.GID][top], step.GID)
+			callEdge, ok := gs.callEdgeMap[step.GID][label]
+			if !ok {
+				text := fmt.Sprintf("failed to Step(%s): callEdge[%d] is not created", trace.MODE_FUNC_EXIT, step.GID)
+				return "", false, errors.New(text)
+			}
+			callEdge.SetStyle(STYLE_DASHED)
+			callEdge.SetColor(COLOR_BLACK)
+		} else {
+			goCluster.SetBackgroundColor(COLOR_WHITE)
+			goCluster.SetStyle(STYLE_DASHED)
+		}
+
+		gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
 	}
+
 	gs.next++
 
 	var buf bytes.Buffer
@@ -227,7 +220,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 	return buf.String(), true, nil
 }
 
-// StepInfo内部のGoroutine IDに対応するサブグラフがあれば取得し，無ければ"style=dashed"で作成する．
+// StepInfo内部のGoroutine IDに対応するサブグラフがあれば取得し，無ければ作成する．
 func (gs *GraphState) getOrCreateCluster(step trace.StepInfo) (*cgraph.Graph, error) {
 	if _, ok := gs.goroutineMap[step.GID]; !ok {
 		name := fmt.Sprintf("%s%d", HEADER_CLUSTER_GOROUTINE, step.GID)
@@ -236,14 +229,13 @@ func (gs *GraphState) getOrCreateCluster(step trace.StepInfo) (*cgraph.Graph, er
 			return nil, fmt.Errorf("failed to init goroutine subgraph: %s; %w", name, err)
 		}
 		goCluster.SetLabel(fmt.Sprintf("Goroutine %d", step.GID))
-		goCluster.SetStyle(STYLE_DASHED)
 		gs.goroutineMap[step.GID] = goCluster
 	}
 
 	return gs.goroutineMap[step.GID], nil
 }
 
-// Goroutine IDに対応した関数ノードがあれば取得し，無ければ"style=dashed"で作成する．s
+// Goroutine IDに対応した関数ノードがあれば取得し，無ければ作成する．
 func (gs *GraphState) getOrCreateNode(goCluster *cgraph.Graph, step trace.StepInfo) (*cgraph.Node, error) {
 	if _, ok := gs.funcNodeMap[step.GID]; !ok {
 		gs.funcNodeMap[step.GID] = make(map[string]*cgraph.Node)
@@ -254,9 +246,6 @@ func (gs *GraphState) getOrCreateNode(goCluster *cgraph.Graph, step trace.StepIn
 			return nil, fmt.Errorf("failed to create func node: %s; %w", step.Func, err)
 		}
 		funcNode.SetLabel(step.Func)
-		// funcNode.SetStyle(STYLE_INVIS)
-		funcNode.SetStyle(STYLE_DASHED)
-		// funcNode.SetFillColor(COLOR_WHITE)
 		gs.funcNodeMap[step.GID][step.Func] = funcNode
 	}
 
@@ -277,8 +266,6 @@ func (gs *GraphState) getOrCreateEdge(step trace.StepInfo) (*cgraph.Edge, error)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create edge: %s; %w", label, err)
 		}
-		// callEdge.SetStyle(STYLE_INVIS)
-		callEdge.SetStyle(STYLE_DASHED)
 		gs.callEdgeMap[step.GID][label] = callEdge
 	}
 	return gs.callEdgeMap[step.GID][label], nil
