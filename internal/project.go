@@ -72,7 +72,7 @@ func SearchMainAll(root string) ([]string, error) {
 		// parser.PackageClauseOnly を指定すると、冒頭の package 宣言だけ読んで止まるので高速
 		f, err := parser.ParseFile(fset, path, nil, parser.PackageClauseOnly)
 		if err != nil {
-			return nil
+			return err
 		}
 		if f.Name.Name == "main" {
 			mainFiles = append(mainFiles, path)
