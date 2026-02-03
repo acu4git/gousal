@@ -6,6 +6,7 @@ require (
 	github.com/goccy/go-graphviz v0.2.10
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
+	golang.org/x/mod v0.32.0
 	golang.org/x/tools v0.41.0
 )
 
