@@ -19,7 +19,7 @@ type App struct {
 	gs          *graph.GraphState
 	cancel      graph.CleanUpFunc
 	projectRoot string
-	mainFile    string
+	mainFiles   []string
 }
 
 // NewApp creates a new App application struct
@@ -33,8 +33,8 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-func (a *App) SelectGoProject() ([]string, error) {
-	mainFiles := make([]string, 0)
+func (a *App) SelectGoProject() (map[string][]string, error) {
+	mainDirs := make(map[string][]string, 0)
 	for {
 		dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{})
 		if err != nil {
@@ -46,11 +46,11 @@ func (a *App) SelectGoProject() ([]string, error) {
 			return nil, err
 		}
 		if isRoot {
-			mainFiles, err = internal.SearchMainAll(dir)
+			mainDirs, err = internal.SearchMainAll(dir)
 			if err != nil {
 				return nil, err
 			}
-			if len(mainFiles) == 0 {
+			if len(mainDirs) == 0 {
 				_, err = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 					Type:    runtime.WarningDialog,
 					Title:   "main File Not Found",
@@ -75,13 +75,17 @@ func (a *App) SelectGoProject() ([]string, error) {
 		}
 	}
 
-	runtime.LogInfof(a.ctx, "num of mainFiles: %d", len(mainFiles))
+	// runtime.LogInfof(a.ctx, "num of mainDirs: %d", len(mainDirs))
+	runtime.LogInfo(a.ctx, "num of main files:")
+	for dir, files := range mainDirs {
+		runtime.LogInfof(a.ctx, "\t%s: %d", dir, len(files))
+	}
 
-	return mainFiles, nil
+	return mainDirs, nil
 }
 
-func (a *App) Trace(file string) (string, error) {
-	a.mainFile = file
+func (a *App) Trace(files []string) (string, error) {
+	a.mainFiles = files
 
 	// プロジェクトのクローン
 	tmpRoot, err := internal.MakeTmpProjectRoot(a.projectRoot)
@@ -123,15 +127,24 @@ func (a *App) Trace(file string) (string, error) {
 	runtime.LogInfo(a.ctx, "inserted runtime/trace successfully")
 
 	// トレース実行
-	mainRel, err := filepath.Rel(a.projectRoot, a.mainFile)
-	if err != nil {
+	tmpMains := make([]string, 0)
+	for _, m := range a.mainFiles {
+		mainRel, err := filepath.Rel(a.projectRoot, m)
+		if err != nil {
+			return "", err
+		}
+		tmpMain := filepath.Join(tmpRoot, mainRel)
+		tmpMains = append(tmpMains, tmpMain)
+	}
+	// mainRel, err := filepath.Rel(a.projectRoot, a.mainFile)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// tmpMain := filepath.Join(tmpRoot, mainRel)
+	if err := trace.RunWithTrace(a.ctx, tmpRoot, tmpMains...); err != nil {
 		return "", err
 	}
-	tmpMain := filepath.Join(tmpRoot, mainRel)
-	if err := trace.RunWithTrace(a.ctx, tmpRoot, tmpMain); err != nil {
-		return "", err
-	}
-	runtime.LogInfof(a.ctx, "trace tmpMain: %s", tmpMain)
+	runtime.LogInfof(a.ctx, "trace tmpMain: %v", tmpMains)
 
 	// トレースデータの解析
 	traceFile := filepath.Join(tmpRoot, "trace.out")
@@ -174,4 +187,8 @@ func (a *App) Step() (StepResult, error) {
 	}
 	svg, ok, err := a.gs.Step()
 	return StepResult{SVG: svg, CanStep: ok}, err
+}
+
+func (a *App) Rel(basepath string, targpath string) (string, error) {
+	return filepath.Rel(basepath, targpath)
 }
