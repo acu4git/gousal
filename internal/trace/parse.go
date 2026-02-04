@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	xtrace "golang.org/x/exp/trace"
@@ -21,6 +22,8 @@ type StepInfo struct {
 	Mode string
 	Func string
 	File string
+	Line uint64
+	PC   uint64
 }
 
 type StepHistory []StepInfo
@@ -53,7 +56,7 @@ func Parse(traceFile string) ([]StepInfo, error) {
 
 	stepHistory := make(StepHistory, 0)
 
-	// re := regexp.MustCompile(`^(runtime|os)[./]`)
+	re := regexp.MustCompile(`^(runtime|os)[./]`)
 	for {
 		ev, err := r.ReadEvent()
 		if err == io.EOF {
@@ -68,11 +71,12 @@ func Parse(traceFile string) ([]StepInfo, error) {
 		if gid == -1 {
 			continue
 		}
-		// stk := ev.Stack()
-		// // スタックが存在しない場合もあるのでチェック"
-		// if stk == xtrace.NoStack {
-		// 	continue
-		// }
+
+		stk := ev.Stack()
+		// スタックが存在しない場合もあるのでチェック"
+		if stk == xtrace.NoStack {
+			continue
+		}
 
 		switch ev.Kind() {
 		case xtrace.EventLog:
@@ -82,7 +86,44 @@ func Parse(traceFile string) ([]StepInfo, error) {
 				return nil, err
 			}
 			stepHistory = append(stepHistory, step)
-			fmt.Fprintf(logf, "Goroutine %d\n\tmode: %s\n\tfuncDefID: %s\n", gid, log.Category, log.Message)
+			fmt.Fprintf(logf, "Goroutine %d\n", gid)
+			fmt.Fprintf(logf, "\tkind: %s\n", ev.Kind())
+			fmt.Fprintf(logf, "\tmode: %s\n", log.Category)
+			fmt.Fprintf(logf, "\tfuncDefID: %s\n", log.Message)
+		case xtrace.EventStateTransition:
+			st := ev.StateTransition()
+			switch st.Resource.Kind {
+			case xtrace.ResourceGoroutine:
+				historyStk := make(StepHistory, 0)
+
+				frames := stk.Frames()
+				for v := range frames {
+					info := StepInfo{
+						GID:  int64(gid),
+						Func: v.Func,
+						File: v.File,
+						Line: v.Line,
+						PC:   v.PC,
+					}
+					historyStk = append(historyStk, info)
+				}
+
+				from, to := st.Goroutine()
+				if to == xtrace.GoSyscall ||
+					historyStk.hasFuncWithPrefix("runtime/trace", "fmt.", "sync.(*WaitGroup).Done") ||
+					re.MatchString(historyStk[0].Func) {
+					break
+				}
+				fmt.Fprintf(logf, "Goroutine %d\n", gid)
+				fmt.Fprintf(logf, "\tkind: %s\n", ev.Kind())
+				fmt.Fprintf(logf, "\transistion: %s -> %s\n", from, to)
+				fmt.Fprintf(logf, "\tev.Goroutine(): %d\n", gid)
+				fmt.Fprintf(logf, "\tst.Resource.Goroutine(): %d\n", st.Resource.Goroutine())
+				fmt.Fprintln(logf, "\tstack trace:")
+				for _, v := range historyStk {
+					fmt.Fprintf(logf, "\t\t(PC=%d) %s (%s:%d)\n", v.PC, v.Func, v.File, v.Line)
+				}
+			}
 		}
 	}
 
