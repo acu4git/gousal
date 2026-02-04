@@ -27,7 +27,6 @@ type GraphState struct {
 	ctx          context.Context
 	gviz         *graphviz.Graphviz
 	g            *graphviz.Graph
-	cancel       CleanUpFunc
 	steps        trace.StepHistory
 	next         int
 	goroutineMap map[int64]*cgraph.Graph
