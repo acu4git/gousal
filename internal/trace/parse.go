@@ -134,7 +134,7 @@ func Parse(traceFile string) ([]StepInfo, error) {
 					// 非同期処理を呼び出した関数の特定
 					var parentFunc string
 					for _, v := range callStk {
-						if v.Func != "sync.(*WaitGroup).Wait" {
+						if v.Func != "sync.(*WaitGroup).Go" {
 							parentFunc = v.Func
 							break
 						}
