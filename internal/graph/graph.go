@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"wails-test/internal/trace"
 
 	"github.com/goccy/go-graphviz"
@@ -24,15 +25,16 @@ const (
 )
 
 type GraphState struct {
-	ctx          context.Context
-	gviz         *graphviz.Graphviz
-	g            *graphviz.Graph
-	steps        trace.StepHistory
-	next         int
-	goroutineMap map[int64]*cgraph.Graph
-	funcNodeMap  map[int64]map[string]*cgraph.Node
-	callEdgeMap  map[int64]map[string]*cgraph.Edge
-	fnStack      map[int64][]string
+	ctx             context.Context
+	gviz            *graphviz.Graphviz
+	g               *graphviz.Graph
+	steps           trace.StepHistory
+	next            int
+	goroutineMap    map[int64]*cgraph.Graph
+	funcNodeMap     map[int64]map[string]*cgraph.Node
+	callEdgeMap     map[int64]map[string]*cgraph.Edge
+	goCreateEdgeMap map[string]*cgraph.Edge
+	fnStack         map[int64][]string
 }
 
 type CleanUpFunc func()
@@ -55,14 +57,15 @@ func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, C
 		}
 	}
 	return &GraphState{
-		ctx:          ctx,
-		gviz:         gv,
-		g:            g,
-		steps:        steps,
-		goroutineMap: make(map[int64]*cgraph.Graph),
-		funcNodeMap:  make(map[int64]map[string]*cgraph.Node),
-		callEdgeMap:  make(map[int64]map[string]*cgraph.Edge),
-		fnStack:      make(map[int64][]string),
+		ctx:             ctx,
+		gviz:            gv,
+		g:               g,
+		steps:           steps,
+		goroutineMap:    make(map[int64]*cgraph.Graph),
+		funcNodeMap:     make(map[int64]map[string]*cgraph.Node),
+		callEdgeMap:     make(map[int64]map[string]*cgraph.Edge),
+		goCreateEdgeMap: make(map[string]*cgraph.Edge),
+		fnStack:         make(map[int64][]string),
 	}, cleanup, nil
 }
 
@@ -101,6 +104,40 @@ func (gs *GraphState) Load() (string, error) {
 			}
 			top := len(gs.fnStack[step.GID]) - 1
 			gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
+		case trace.MODE_GO_CREATE:
+			// 親Goroutineのクラスタと関数ノードを取得
+			parentGoCluster, err := gs.getOrCreateCluster(trace.StepInfo{GID: step.GID})
+			if err != nil {
+				return "", fmt.Errorf("failed to get parent cluster: %w", err)
+			}
+			// 親の関数ノードがなければ作成
+			if _, ok := gs.funcNodeMap[step.GID][step.Func]; !ok {
+				if _, err := gs.getOrCreateNode(parentGoCluster, trace.StepInfo{GID: step.GID, Func: step.Func}); err != nil {
+					return "", fmt.Errorf("failed to create parent node for go-create: %w", err)
+				}
+			}
+
+			// 子Goroutineのクラスタを作成
+			childGoCluster, err := gs.getOrCreateCluster(trace.StepInfo{GID: step.ChildGID})
+			if err != nil {
+				return "", fmt.Errorf("failed to create child cluster: %w", err)
+			}
+			childGoCluster.SetStyle(STYLE_DASHED)
+
+			// 子Goroutineの開始ノードを作成
+			childStartNode, err := gs.getOrCreateNode(childGoCluster, trace.StepInfo{GID: step.ChildGID, Func: fmt.Sprintf("start_goroutine_%d", step.ChildGID)})
+			if err != nil {
+				return "", fmt.Errorf("failed to create child start node: %w", err)
+			}
+			childStartNode.SetLabel(fmt.Sprintf("start from GID %d", step.GID))
+			childStartNode.SetShape("point")
+
+			// 親関数ノードから子開始ノードへのエッジを作成
+			edge, err := gs.getOrCreateGoCreateEdge(step, childStartNode)
+			if err != nil {
+				return "", fmt.Errorf("failed to create go-create edge: %w", err)
+			}
+			edge.SetStyle(STYLE_DASHED)
 		}
 	}
 
@@ -200,9 +237,53 @@ func (gs *GraphState) Step() (string, bool, error) {
 		} else {
 			goCluster.SetBackgroundColor(COLOR_WHITE)
 			goCluster.SetStyle(STYLE_DASHED)
+
+			// Goroutine同士を繋ぐ有向辺を点線にする
+			// このGoroutineを生成したエッジを探して更新
+			for label, edge := range gs.goCreateEdgeMap {
+				// labelの形式: "parentGID:parentFunc -> childGID"
+				// このGoroutineが終了した場合、childGIDがstep.GIDと一致するエッジを探す
+				expectedSuffix := fmt.Sprintf(" -> %d", step.GID)
+				if strings.HasSuffix(label, expectedSuffix) {
+					edge.SetStyle(STYLE_DASHED)
+					edge.SetColor(COLOR_BLACK)
+				}
+			}
+
+			// Goroutineの開始ノードも黒色にする
+			startNodeKey := fmt.Sprintf("start_goroutine_%d", step.GID)
+			if startNode, ok := gs.funcNodeMap[step.GID][startNodeKey]; ok {
+				startNode.SetStyle(STYLE_DASHED)
+				startNode.SetColor(COLOR_BLACK)
+			}
 		}
 
 		gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
+	case trace.MODE_GO_CREATE:
+		// 子Goroutineのクラスタをハイライト
+		childGoCluster, ok := gs.goroutineMap[step.ChildGID]
+		if !ok {
+			return "", false, fmt.Errorf("child cluster %d not found", step.ChildGID)
+		}
+		childGoCluster.SetStyle(STYLE_FILLED)
+		childGoCluster.SetBackgroundColor(COLOR_LIGHTGREEN)
+
+		// 子Goroutineの開始ノードを可視化
+		childStartNode, ok := gs.funcNodeMap[step.ChildGID][fmt.Sprintf("start_goroutine_%d", step.ChildGID)]
+		if !ok {
+			return "", false, fmt.Errorf("child start node for GID %d not found", step.ChildGID)
+		}
+		childStartNode.SetStyle(STYLE_FILLED)
+		childStartNode.SetColor(COLOR_RED)
+
+		// go-createエッジをハイライト
+		label := fmt.Sprintf("%d:%s -> %d", step.GID, step.Func, step.ChildGID)
+		edge, ok := gs.goCreateEdgeMap[label]
+		if !ok {
+			return "", false, fmt.Errorf("go-create edge '%s' not found", label)
+		}
+		edge.SetStyle(STYLE_FILLED)
+		edge.SetColor(COLOR_RED)
 	}
 
 	gs.next++
@@ -268,4 +349,23 @@ func (gs *GraphState) getOrCreateEdge(step trace.StepInfo) (*cgraph.Edge, error)
 		gs.callEdgeMap[step.GID][label] = callEdge
 	}
 	return gs.callEdgeMap[step.GID][label], nil
+}
+
+// Goroutineをまたぐ新しい関数ノードと親関数ノードの有向辺があれば取得し，無ければ有向辺で繋ぐ．
+func (gs *GraphState) getOrCreateGoCreateEdge(step trace.StepInfo, childNode *cgraph.Node) (*cgraph.Edge, error) {
+	label := fmt.Sprintf("%d:%s -> %d", step.GID, step.Func, step.ChildGID)
+	if _, ok := gs.goCreateEdgeMap[label]; !ok {
+		parentFuncNode, ok := gs.funcNodeMap[step.GID][step.Func]
+		if !ok {
+			return nil, fmt.Errorf("parent function node '%s' not found in GID %d", step.Func, step.GID)
+		}
+
+		edge, err := gs.g.CreateEdgeByName(label, parentFuncNode, childNode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create go-create edge: %s; %w", label, err)
+		}
+		// edge.SetLabel("go")
+		gs.goCreateEdgeMap[label] = edge
+	}
+	return gs.goCreateEdgeMap[label], nil
 }
