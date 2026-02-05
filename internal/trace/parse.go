@@ -1,12 +1,12 @@
 package trace
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	xtrace "golang.org/x/exp/trace"
@@ -47,6 +47,8 @@ type StepInfo struct {
 	ChildGID int64  // child goroutine id(when go-create or go-)
 	Mode     string // event mode
 	Func     string // function name
+	File     string // filepath where function is written
+	Line     uint64 // line where function is located
 }
 
 type StepHistory []StepInfo
@@ -132,10 +134,13 @@ func Parse(traceFile string) ([]StepInfo, error) {
 				// EvGoCreate
 				if from == xtrace.GoNotExist && to == xtrace.GoRunnable {
 					// 非同期処理を呼び出した関数の特定
-					var parentFunc string
+					var parentFunc, file string
+					var line uint64
 					for _, v := range callStk {
 						if v.Func != "sync.(*WaitGroup).Go" {
 							parentFunc = v.Func
+							file = v.File
+							line = v.Line
 							break
 						}
 					}
@@ -146,6 +151,8 @@ func Parse(traceFile string) ([]StepInfo, error) {
 						ChildGID: int64(childGID),
 						Mode:     MODE_GO_CREATE,
 						Func:     parentFunc,
+						File:     file,
+						Line:     line,
 					}
 					stepHistory = append(stepHistory, info)
 				}
@@ -182,17 +189,52 @@ func traceReader(file string) (*xtrace.Reader, cancelFunc, error) {
 	return r, func() { f.Close() }, nil
 }
 
+type funcInfo struct {
+	filepath string
+	line     uint64
+	col      uint64
+	fullname string
+}
+
+func idToFuncInfo(id string) (funcInfo, error) {
+	l, r, ok := strings.Cut(id, "#")
+	if !ok {
+		return funcInfo{}, fmt.Errorf("failed to convert %s to funcInfo: token '#' not found.", id)
+	}
+	tok := strings.Split(l, ":")
+	if len(tok) != 3 {
+		return funcInfo{}, fmt.Errorf("failed to convert %s to funcInfo: token ':' appear twice.", id)
+	}
+	path := tok[0]
+	line, err := strconv.ParseUint(tok[1], 10, 64)
+	if err != nil {
+		return funcInfo{}, fmt.Errorf("failed to convert %s to funcInfo: %w", id, err)
+	}
+	col, err := strconv.ParseUint(tok[2], 10, 64)
+	if err != nil {
+		return funcInfo{}, fmt.Errorf("failed to convert %s to funcInfo: %w", id, err)
+	}
+	return funcInfo{
+		filepath: path,
+		line:     line,
+		col:      col,
+		fullname: r,
+	}, nil
+}
+
 // funcDefIDは，"<project_root>/<rel>/<go_file>:<line>:<col>#<module>/<package>.<func>"のようなファイル情報と関数情報を'#'で区切る形式のID．
 //
 // 例外的に，mainパッケージのmain関数は"<project_root>/<rel>/<go_file>:<line>:<col>#main.main"と表現される．
 func funcDefIdToStepInfo(gid xtrace.GoID, mode, funcDefID string) (StepInfo, error) {
-	_, funcInfo, ok := strings.Cut(funcDefID, "#")
-	if !ok {
-		return StepInfo{}, errors.New("failed to convert funcDefID to StepInfo: token '#' not found.")
+	fn, err := idToFuncInfo(funcDefID)
+	if err != nil {
+		return StepInfo{}, err
 	}
 	return StepInfo{
 		GID:  int64(gid),
 		Mode: mode,
-		Func: funcInfo,
+		Func: fn.fullname,
+		File: fn.filepath,
+		Line: fn.line,
 	}, nil
 }
