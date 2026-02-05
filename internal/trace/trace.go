@@ -35,6 +35,22 @@ const (
 	ALIAS_PATH_FILEPATH = "__pfilepath__"
 )
 
+// 無名関数のカウンターを管理する構造体
+type anonFuncCounter struct {
+	counters map[ast.Node]int
+}
+
+func newAnonFuncCounter() *anonFuncCounter {
+	return &anonFuncCounter{
+		counters: make(map[ast.Node]int),
+	}
+}
+
+func (c *anonFuncCounter) next(parent ast.Node) int {
+	c.counters[parent]++
+	return c.counters[parent]
+}
+
 func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	suffix := util.HexSuffix()
 
@@ -56,8 +72,9 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 		return true
 	})
 
+	counter := newAnonFuncCounter()
 	for _, fn := range funcs {
-		if err := insertTrace(ctx, tmpRoot, suffix, fset, file, fn); err != nil {
+		if err := insertTrace(ctx, tmpRoot, suffix, fset, file, fn, counter); err != nil {
 			return err
 		}
 	}
@@ -72,8 +89,8 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	return nil
 }
 
-func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) error {
-	funcDefID := funcDefID(fset, file, fn)
+func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, counter *anonFuncCounter) error {
+	funcDefID := funcDefID(fset, file, fn, "")
 
 	// context.Background()
 	ctxExpr := &ast.CallExpr{
@@ -117,6 +134,11 @@ func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet,
 		[]ast.Stmt{enterCall, exitDefer},
 		fn.Body.List...,
 	)
+
+	// 関数本体内の無名関数を処理
+	if err := processAnonFuncs(fset, file, fn, fn.Body, suffix, counter, ""); err != nil {
+		return err
+	}
 
 	// 必須パッケージ(key: pkgName, value: alias)
 	PkgAliases := map[string]string{
@@ -178,7 +200,91 @@ func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet,
 	return nil
 }
 
-func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) string {
+// 無名関数を再帰的に処理する
+func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncDecl, node ast.Node, suffix string, counter *anonFuncCounter, parentAnonPath string) error {
+	var err error
+	ast.Inspect(node, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+
+		// 無名関数リテラルを検出
+		if funcLit, ok := n.(*ast.FuncLit); ok {
+			// この無名関数のカウントを取得
+			count := counter.next(node)
+
+			// 無名関数のパスを構築
+			var anonPath string
+			if parentAnonPath == "" {
+				anonPath = fmt.Sprintf("anon-%d", count)
+			} else {
+				anonPath = fmt.Sprintf("%s-%d", parentAnonPath, count)
+			}
+
+			// 無名関数用のfuncDefIDを生成
+			anonFuncDefID := funcDefID(fset, file, parentFunc, anonPath)
+
+			// context.Background()
+			ctxExpr := &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ast.NewIdent(ALIAS_CONTEXT + suffix),
+					Sel: ast.NewIdent("Background"),
+				},
+			}
+
+			// trace.Log(context.Background(), "func-enter", anonFuncDefID)
+			enterCall := &ast.ExprStmt{
+				X: &ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X:   ast.NewIdent(ALIAS_RUNTIME_TRACE + suffix),
+						Sel: ast.NewIdent("Log"),
+					},
+					Args: []ast.Expr{
+						ctxExpr,
+						&ast.BasicLit{Kind: token.STRING, Value: `"func-enter"`},
+						&ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("%q", anonFuncDefID)},
+					},
+				},
+			}
+
+			// defer trace.Log(context.Background(), "func-exit", anonFuncDefID)
+			exitDefer := &ast.DeferStmt{
+				Call: &ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X:   ast.NewIdent(ALIAS_RUNTIME_TRACE + suffix),
+						Sel: ast.NewIdent("Log"),
+					},
+					Args: []ast.Expr{
+						ctxExpr,
+						&ast.BasicLit{Kind: token.STRING, Value: `"func-exit"`},
+						&ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("%q", anonFuncDefID)},
+					},
+				},
+			}
+
+			// 無名関数の本体にトレースコードを挿入
+			funcLit.Body.List = append(
+				[]ast.Stmt{enterCall, exitDefer},
+				funcLit.Body.List...,
+			)
+
+			// この無名関数内のさらにネストした無名関数を処理
+			if innerErr := processAnonFuncs(fset, file, parentFunc, funcLit.Body, suffix, counter, anonPath); innerErr != nil {
+				err = innerErr
+				return false
+			}
+
+			// この無名関数リテラル自体の子ノードは処理済みなのでfalseを返す
+			return false
+		}
+
+		return true
+	})
+
+	return err
+}
+
+func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, anonPath string) string {
 	pos := fset.Position(fn.Pos())
 	funcPosInfo := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
 	funcName := packageID(fset, file)
@@ -193,6 +299,12 @@ func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl) string {
 	if fn.Name.Name == "main" && file.Name.Name == "main" {
 		funcName = "main.main"
 	}
+
+	// 無名関数の場合はパスを追加
+	if anonPath != "" {
+		funcName += fmt.Sprintf(".%s", anonPath)
+	}
+
 	return fmt.Sprintf("%s#%s", funcPosInfo, funcName)
 }
 
