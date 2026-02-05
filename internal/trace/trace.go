@@ -216,9 +216,9 @@ func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncD
 			// 無名関数のパスを構築
 			var anonPath string
 			if parentAnonPath == "" {
-				anonPath = fmt.Sprintf("anon-%d", count)
+				anonPath = fmt.Sprintf("func%d", count)
 			} else {
-				anonPath = fmt.Sprintf("%s-%d", parentAnonPath, count)
+				anonPath = fmt.Sprintf("%s.%d", parentAnonPath, count)
 			}
 
 			// 無名関数用のfuncDefIDを生成
