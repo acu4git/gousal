@@ -10,7 +10,7 @@ type LoadingContextType = {
 
 const LoadingContext = createContext<LoadingContextType | null>(null);
 
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 30000;
 
 export const LoadingProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
