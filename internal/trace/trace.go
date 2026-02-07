@@ -288,6 +288,9 @@ func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, anonPath s
 	pos := fset.Position(fn.Pos())
 	funcPosInfo := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
 	funcName := packageID(fset, file)
+	if file.Name.Name == "main" {
+		funcName = "main"
+	}
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
 		recv := receiverTypeString(fn.Recv.List[0].Type)
 		funcName += fmt.Sprintf(".(%s)", recv)
