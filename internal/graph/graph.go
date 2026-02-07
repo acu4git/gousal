@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"wails-test/internal/trace"
 
 	"github.com/goccy/go-graphviz"
@@ -12,28 +13,31 @@ import (
 )
 
 const (
-	HEADER_CLUSTER_GOROUTINE = "cluster_goroutine_"
-	STYLE_FILLED             = "filled"
-	STYLE_INVIS              = "invis"
-	STYLE_DASHED             = "dashed"
-	COLOR_BLACK              = "black"
-	COLOR_WHITE              = "white"
-	COLOR_GRAY               = "gray"
-	COLOR_LIGHTGREEN         = "lightgreen"
-	COLOR_RED                = "red"
+	STYLE_FILLED     = "filled"
+	STYLE_INVIS      = "invis"
+	STYLE_DASHED     = "dashed"
+	COLOR_BLACK      = "black"
+	COLOR_WHITE      = "white"
+	COLOR_GRAY       = "gray"
+	COLOR_LIGHTGREEN = "lightgreen"
+	COLOR_RED        = "red"
+	SHAPE_POINT      = "point"
 )
 
 type GraphState struct {
-	ctx             context.Context
-	gviz            *graphviz.Graphviz
-	g               *graphviz.Graph
-	steps           trace.StepHistory
-	next            int
-	goroutineMap    map[int64]*cgraph.Graph
-	funcNodeMap     map[int64]map[string]*cgraph.Node
-	callEdgeMap     map[int64]map[string]*cgraph.Edge
-	goCreateEdgeMap map[string]map[int64]*cgraph.Edge
-	fnStack         map[int64][]string
+	ctx                 context.Context
+	gviz                *graphviz.Graphviz
+	g                   *graphviz.Graph
+	steps               trace.StepHistory
+	next                int
+	goroutineMap        map[int64]*cgraph.Graph
+	funcNodeMap         map[int64]map[string]*cgraph.Node
+	callEdgeMap         map[int64]map[string]*cgraph.Edge
+	goCreateEdgeMap     map[string]map[int64]*cgraph.Edge
+	fnStack             map[int64][]string
+	mechanismClusterMap map[string]*cgraph.Graph
+	mechanismAnchorMap  map[string]*cgraph.Node
+	goroutineRootFunc   map[int64]string
 }
 
 type CleanUpFunc func()
@@ -56,19 +60,32 @@ func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, C
 		}
 	}
 	return &GraphState{
-		ctx:             ctx,
-		gviz:            gv,
-		g:               g,
-		steps:           steps,
-		goroutineMap:    make(map[int64]*cgraph.Graph),
-		funcNodeMap:     make(map[int64]map[string]*cgraph.Node),
-		callEdgeMap:     make(map[int64]map[string]*cgraph.Edge),
-		goCreateEdgeMap: make(map[string]map[int64]*cgraph.Edge),
-		fnStack:         make(map[int64][]string),
+		ctx:                 ctx,
+		gviz:                gv,
+		g:                   g,
+		steps:               steps,
+		goroutineMap:        make(map[int64]*cgraph.Graph),
+		funcNodeMap:         make(map[int64]map[string]*cgraph.Node),
+		callEdgeMap:         make(map[int64]map[string]*cgraph.Edge),
+		goCreateEdgeMap:     make(map[string]map[int64]*cgraph.Edge),
+		fnStack:             make(map[int64][]string),
+		mechanismClusterMap: make(map[string]*cgraph.Graph),
+		mechanismAnchorMap:  make(map[string]*cgraph.Node),
+		goroutineRootFunc:   make(map[int64]string),
 	}, cleanup, nil
 }
 
 func (gs *GraphState) Load() (string, error) {
+	// 1. 事前計算：全ステップをスキャンしてGoroutineのルート関数を特定する
+	for _, step := range gs.steps {
+		if step.Mode == trace.MODE_FUNC_ENTER {
+			if _, ok := gs.goroutineRootFunc[step.GID]; !ok {
+				gs.goroutineRootFunc[step.GID] = step.Func
+			}
+		}
+	}
+
+	// 2. グラフ要素を構築する
 	for _, step := range gs.steps {
 		switch step.Mode {
 		case trace.MODE_FUNC_ENTER:
@@ -129,7 +146,7 @@ func (gs *GraphState) Load() (string, error) {
 				return "", fmt.Errorf("failed to create child start node: %w", err)
 			}
 			childStartNode.SetLabel(fmt.Sprintf("start from GID %d", step.GID))
-			childStartNode.SetShape("point")
+			childStartNode.SetShape(SHAPE_POINT)
 
 			// 親関数ノードから子開始ノードへのエッジを作成
 			edge, err := gs.getOrCreateGoCreateEdge(step, childStartNode)
@@ -144,6 +161,33 @@ func (gs *GraphState) Load() (string, error) {
 	for k := range gs.fnStack {
 		delete(gs.fnStack, k)
 	}
+
+	mainCluster := gs.mechanismClusterMap["main.main"]
+	mainNode, err := mainCluster.CreateNodeByName("main.main")
+	mainNode.SetShape(SHAPE_POINT)
+	mainNode.SetStyle(STYLE_INVIS)
+	if err != nil {
+		return "", err
+	}
+	for k, v := range gs.mechanismClusterMap {
+		if k == "main.main" {
+			continue
+		}
+		v.SetStyle(STYLE_INVIS)
+		node, err := v.CreateNodeByName(k)
+		node.SetShape(SHAPE_POINT)
+		node.SetStyle(STYLE_INVIS)
+		if err != nil {
+			return "", err
+		}
+		edge, err := gs.g.CreateEdgeByName(fmt.Sprintf("main.main -> %s", k), mainNode, node)
+		if err != nil {
+			return "", err
+		}
+		edge.SetStyle(STYLE_INVIS)
+	}
+
+	gs.g.SetRankDir("TB")
 
 	var buf bytes.Buffer
 	if err := gs.gviz.Render(gs.ctx, gs.g, graphviz.SVG, &buf); err != nil {
@@ -161,7 +205,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 		// goroutine subgraph
 		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
-			text := fmt.Sprintf("failed to Step(@%s): %s%d is not created", trace.MODE_FUNC_ENTER, HEADER_CLUSTER_GOROUTINE, step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): cluster_goroutine_%d is not created", trace.MODE_FUNC_ENTER, step.GID)
 			return "", false, errors.New(text)
 		}
 		goCluster.SetStyle(STYLE_FILLED)
@@ -301,10 +345,35 @@ func (gs *GraphState) Step() (string, bool, error) {
 }
 
 // StepInfo内部のGoroutine IDに対応するサブグラフがあれば取得し，無ければ作成する．
+// さらに、Goroutineのルート関数に基づいて、より大きな「メカニズム」クラスタにグループ化する．
 func (gs *GraphState) getOrCreateCluster(step trace.StepInfo) (*cgraph.Graph, error) {
+	// このGoroutineのルート関数名を取得
+	rootFuncName, ok := gs.goroutineRootFunc[step.GID]
+	if !ok {
+		// 事前計算により、ここに来ることはないはず
+		return nil, fmt.Errorf("root function for GID %d not found", step.GID)
+	}
+
+	// メカニズムクラスタを取得または作成
+	mechanismCluster, ok := gs.mechanismClusterMap[rootFuncName]
+	if !ok {
+		// クラスタ名にスラッシュが含まれているとエラーになるため置換する
+		safeRootFuncName := strings.ReplaceAll(rootFuncName, "/", "_")
+		clusterName := fmt.Sprintf("cluster_mechanism_%s", safeRootFuncName)
+		mc, err := gs.g.CreateSubGraphByName(clusterName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create mechanism cluster '%s': %w", clusterName, err)
+		}
+		// mc.SetLabel(fmt.Sprintf("Mechanism: %s", rootFuncName))
+		mc.SetStyle(STYLE_INVIS)
+		gs.mechanismClusterMap[rootFuncName] = mc
+		mechanismCluster = mc
+	}
+
+	// Goroutineクラスタをメカニズムクラスタの内部に取得または作成
 	if _, ok := gs.goroutineMap[step.GID]; !ok {
-		name := fmt.Sprintf("%s%d", HEADER_CLUSTER_GOROUTINE, step.GID)
-		goCluster, err := gs.g.CreateSubGraphByName(name)
+		name := fmt.Sprintf("cluster_goroutine_%d", step.GID)
+		goCluster, err := mechanismCluster.CreateSubGraphByName(name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init goroutine subgraph: %s; %w", name, err)
 		}
