@@ -317,6 +317,7 @@ func packageID(fset *token.FileSet, file *ast.File) string {
 	modFile, _ := modfile.Parse("go.mod", modBytes, nil)
 	pos := fset.Position(file.Pos())
 	rel, _ := filepath.Rel(projectRoot, filepath.Dir(pos.Filename))
+	rel = filepath.ToSlash(rel)
 	return path.Join(modFile.Module.Mod.Path, rel)
 }
 
