@@ -90,6 +90,10 @@ func StaticInsertTrace(ctx context.Context, projRoot, tmpRoot, src, dest string)
 }
 
 func insertTrace(_ context.Context, projRoot, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, counter *anonFuncCounter) error {
+	if fn.Body == nil {
+		return nil
+	}
+
 	funcDefID := funcDefID(fset, file, fn, projRoot, "")
 
 	// context.Background()
