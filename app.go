@@ -119,7 +119,7 @@ func (a *App) Trace(files []string) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(dstFile), 0755); err != nil {
 			return "", err
 		}
-		if err := trace.StaticInsertTrace(a.ctx, tmpRoot, goFile, dstFile); err != nil {
+		if err := trace.StaticInsertTrace(a.ctx, a.projectRoot, tmpRoot, goFile, dstFile); err != nil {
 			return "", err
 		}
 		runtime.LogInfof(a.ctx, "inserted trace code successfully: %s", goFile)

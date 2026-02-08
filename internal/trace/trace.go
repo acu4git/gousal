@@ -51,7 +51,7 @@ func (c *anonFuncCounter) next(parent ast.Node) int {
 	return c.counters[parent]
 }
 
-func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
+func StaticInsertTrace(ctx context.Context, projRoot, tmpRoot, src, dest string) error {
 	suffix := util.HexSuffix()
 
 	// Go file -> AST
@@ -74,7 +74,7 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 
 	counter := newAnonFuncCounter()
 	for _, fn := range funcs {
-		if err := insertTrace(ctx, tmpRoot, suffix, fset, file, fn, counter); err != nil {
+		if err := insertTrace(ctx, projRoot, tmpRoot, suffix, fset, file, fn, counter); err != nil {
 			return err
 		}
 	}
@@ -89,8 +89,8 @@ func StaticInsertTrace(ctx context.Context, tmpRoot, src, dest string) error {
 	return nil
 }
 
-func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, counter *anonFuncCounter) error {
-	funcDefID := funcDefID(fset, file, fn, "")
+func insertTrace(_ context.Context, projRoot, tmpRoot, suffix string, fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, counter *anonFuncCounter) error {
+	funcDefID := funcDefID(fset, file, fn, projRoot, "")
 
 	// context.Background()
 	ctxExpr := &ast.CallExpr{
@@ -136,7 +136,7 @@ func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet,
 	)
 
 	// 関数本体内の無名関数を処理
-	if err := processAnonFuncs(fset, file, fn, fn.Body, suffix, counter, ""); err != nil {
+	if err := processAnonFuncs(fset, file, fn, fn.Body, projRoot, suffix, counter, ""); err != nil {
 		return err
 	}
 
@@ -201,7 +201,7 @@ func insertTrace(_ context.Context, tmpRoot, suffix string, fset *token.FileSet,
 }
 
 // 無名関数を再帰的に処理する
-func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncDecl, node ast.Node, suffix string, counter *anonFuncCounter, parentAnonPath string) error {
+func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncDecl, node ast.Node, projRoot, suffix string, counter *anonFuncCounter, parentAnonPath string) error {
 	var err error
 	ast.Inspect(node, func(n ast.Node) bool {
 		if n == nil {
@@ -222,7 +222,7 @@ func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncD
 			}
 
 			// 無名関数用のfuncDefIDを生成
-			anonFuncDefID := funcDefID(fset, file, parentFunc, anonPath)
+			anonFuncDefID := funcDefID(fset, file, parentFunc, projRoot, anonPath)
 
 			// context.Background()
 			ctxExpr := &ast.CallExpr{
@@ -269,7 +269,7 @@ func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncD
 			)
 
 			// この無名関数内のさらにネストした無名関数を処理
-			if innerErr := processAnonFuncs(fset, file, parentFunc, funcLit.Body, suffix, counter, anonPath); innerErr != nil {
+			if innerErr := processAnonFuncs(fset, file, parentFunc, funcLit.Body, projRoot, suffix, counter, anonPath); innerErr != nil {
 				err = innerErr
 				return false
 			}
@@ -284,10 +284,10 @@ func processAnonFuncs(fset *token.FileSet, file *ast.File, parentFunc *ast.FuncD
 	return err
 }
 
-func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, anonPath string) string {
+func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, projRoot string, anonPath string) string {
 	pos := fset.Position(fn.Pos())
 	funcPosInfo := fmt.Sprintf("%s:%d:%d", pos.Filename, pos.Line, pos.Column)
-	funcName := packageID(fset, file)
+	funcName := packageID(fset, file, projRoot)
 	if file.Name.Name == "main" {
 		funcName = "main"
 	}
@@ -308,12 +308,11 @@ func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, anonPath s
 	return fmt.Sprintf("%s#%s", funcPosInfo, funcName)
 }
 
-func packageID(fset *token.FileSet, file *ast.File) string {
-	projectRoot, _ := os.Getwd()
-	modBytes, _ := os.ReadFile(filepath.Join(projectRoot, "go.mod"))
+func packageID(fset *token.FileSet, file *ast.File, projRoot string) string {
+	modBytes, _ := os.ReadFile(filepath.Join(projRoot, "go.mod"))
 	modFile, _ := modfile.Parse("go.mod", modBytes, nil)
 	pos := fset.Position(file.Pos())
-	rel, _ := filepath.Rel(projectRoot, filepath.Dir(pos.Filename))
+	rel, _ := filepath.Rel(projRoot, filepath.Dir(pos.Filename))
 	rel = filepath.ToSlash(rel)
 	return path.Join(modFile.Module.Mod.Path, rel)
 }
