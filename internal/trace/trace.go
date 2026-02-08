@@ -299,9 +299,6 @@ func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, anonPath s
 	if params := typeParamNames(fn); len(params) > 0 {
 		funcName += fmt.Sprintf("[%s]", strings.Join(params, ","))
 	}
-	if fn.Name.Name == "main" && file.Name.Name == "main" {
-		funcName = "main.main"
-	}
 
 	// 無名関数の場合はパスを追加
 	if anonPath != "" {
