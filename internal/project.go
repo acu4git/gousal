@@ -1,15 +1,12 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -186,26 +183,33 @@ type goListPkg struct {
 }
 
 func ListGoFiles(projectRoot string) ([]string, error) {
-	cmd := exec.Command("go", "list", "-json", "./...")
-	cmd.Dir = projectRoot
+	var files []string
+	err := filepath.WalkDir(projectRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		// ディレクトリや隠しファイル(.gitなど)はスキップ
+		if d.IsDir() {
+			// .tmp ディレクトリは一時的なプロジェクトのコピーなので除外
+			if d.Name() == TEMP_DIR_NAME || (d.Name() != "." && strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// .goファイル以外は無視
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		// テストファイル(_test.go)は除外する
+		if strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
 
-	out, err := cmd.Output()
+		files = append(files, path)
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(out))
-
-	var files []string
-	for dec.More() {
-		var pkg goListPkg
-		if err := dec.Decode(&pkg); err != nil {
-			return nil, err
-		}
-
-		for _, f := range pkg.GoFiles {
-			files = append(files, filepath.Join(pkg.Dir, f))
-		}
 	}
 	return files, nil
 }
