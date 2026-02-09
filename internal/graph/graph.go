@@ -169,6 +169,7 @@ func (gs *GraphState) Load() (string, error) {
 		delete(gs.fnStack, k)
 	}
 
+	// mainと他のメカニズムクラスタを紐付けて構成を固める
 	mainCluster := gs.mechanismClusterMap["main.main"]
 	mainNode, err := mainCluster.CreateNodeByName("main.main")
 	mainNode.SetShape(SHAPE_POINT)
