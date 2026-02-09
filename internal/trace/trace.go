@@ -51,7 +51,7 @@ func (c *anonFuncCounter) next(parent ast.Node) int {
 	return c.counters[parent]
 }
 
-func StaticInsertTrace(ctx context.Context, projRoot, tmpRoot, src, dest string) error {
+func Instrument(ctx context.Context, projRoot, tmpRoot, src, dest string) error {
 	suffix := util.HexSuffix()
 
 	// Go file -> AST
