@@ -172,7 +172,9 @@ func (a *App) Trace(files []string) (string, error) {
 	}
 	runtime.LogInfo(a.ctx, "load GraphState")
 
-	return svg, err
+	runtime.EventsEmit(a.ctx, "clearLogs", nil)
+
+	return svg, nil
 }
 
 type StepResult struct {

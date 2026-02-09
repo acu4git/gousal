@@ -13,12 +13,17 @@ const AppSideBar = () => {
   useEffect(scrollToBottom, [logs]);
 
   useEffect(() => {
-    const unsubscribe = EventsOn("logEvent", (logMessage: string) => {
+    const unsubscribeLog = EventsOn("logEvent", (logMessage: string) => {
       setLogs((prevLogs) => [...prevLogs, logMessage]);
     });
 
+    const unsubscribeClear = EventsOn("clearLogs", () => {
+      setLogs([]);
+    });
+
     return () => {
-      unsubscribe();
+      unsubscribeLog();
+      unsubscribeClear();
     };
   }, []);
 
@@ -30,11 +35,12 @@ const AppSideBar = () => {
           <h3 className="text-white text-lg font-semibold p-2 border-b border-gray-600">
             Event Log
           </h3>
-          <div className="grow overflow-y-auto p-2">
+          <div className="grow overflow-y-auto py-2">
             {logs.map((log, index) => (
               <div
                 key={index}
-                className="text-stone-200 py-1 text-sm font-mono whitespace-break-spaces border-y"
+                className="text-stone-200 px-1 py-2 text-sm font-mono whitespace-break-spaces border-y break-words"
+                style={index + 1 == logs.length ? { backgroundColor: "#14B2DD" } : {}}
               >
                 {log}
               </div>
