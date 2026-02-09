@@ -1,10 +1,48 @@
 import { Sidebar, SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
+import { EventsOn } from "#wailsjs/runtime";
+import { useState, useEffect, useRef } from "react";
 
 const AppSideBar = () => {
+  const [logs, setLogs] = useState<string[]>([]);
+  const logsEndRef = useRef<null | HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [logs]);
+
+  useEffect(() => {
+    const unsubscribe = EventsOn("logEvent", (logMessage: string) => {
+      setLogs((prevLogs) => [...prevLogs, logMessage]);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   return (
     <Sidebar>
       <SidebarHeader className="text-white text-xl font-bold">Go Vizualizar</SidebarHeader>
-      <SidebarContent />
+      <SidebarContent>
+        <div className="h-full flex flex-col">
+          <h3 className="text-white text-lg font-semibold p-2 border-b border-gray-600">
+            Event Log
+          </h3>
+          <div className="grow overflow-y-auto p-2">
+            {logs.map((log, index) => (
+              <div
+                key={index}
+                className="text-stone-200 py-1 text-sm font-mono whitespace-break-spaces border-y"
+              >
+                {log}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      </SidebarContent>
     </Sidebar>
   );
 };

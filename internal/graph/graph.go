@@ -10,6 +10,7 @@ import (
 
 	"github.com/goccy/go-graphviz"
 	"github.com/goccy/go-graphviz/cgraph"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
@@ -208,8 +209,13 @@ func (gs *GraphState) Load() (string, error) {
 func (gs *GraphState) Step() (string, bool, error) {
 	step := gs.steps[gs.next]
 
+	// ログメッセージの生成
+	var logMessage string
+
 	switch step.Mode {
 	case trace.MODE_FUNC_ENTER:
+		logMessage = fmt.Sprintf("Step %d: [FUNC ENTER]\nGID %d enters %s", gs.next+1, step.GID, step.Func)
+
 		// goroutine subgraph
 		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
@@ -258,6 +264,8 @@ func (gs *GraphState) Step() (string, bool, error) {
 			text := fmt.Sprintf("failed to Step(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.MODE_FUNC_EXIT, step.GID, step.Func)
 			return "", false, errors.New(text)
 		}
+
+		logMessage = fmt.Sprintf("Step %d: [FUNC EXIT]\nGID %d exits %s", gs.next+1, step.GID, step.Func)
 
 		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
@@ -312,6 +320,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 
 		gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
 	case trace.MODE_GO_CREATE:
+		logMessage = fmt.Sprintf("Step %d: [GO CREATE]\nGID %d creates GID %d at %s", gs.next+1, step.GID, step.ChildGID, step.Func)
 		from := fmt.Sprintf("%d:%s", step.GID, step.Func)
 		to := step.ChildGID
 
@@ -340,6 +349,8 @@ func (gs *GraphState) Step() (string, bool, error) {
 		}
 		edge.SetStyle(STYLE_FILLED)
 		edge.SetColor(COLOR_RED)
+	default:
+		logMessage = fmt.Sprintf("Step %d: [%s]\nGID %d", gs.next+1, step.Mode, step.GID)
 	}
 
 	if err := gs.goroutineMap[step.GID].SafeSet("pencolor", "red", ""); err != nil {
@@ -352,6 +363,9 @@ func (gs *GraphState) Step() (string, bool, error) {
 		gs.goroutineMap[step.GID].SafeSet("pencolor", "black", "")
 		gs.goroutineMap[step.GID].SafeSet("penwidth", "1.0", "")
 	}()
+
+	// イベントの発行
+	runtime.EventsEmit(gs.ctx, "logEvent", logMessage)
 
 	gs.next++
 
