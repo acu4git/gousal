@@ -341,6 +341,17 @@ func (gs *GraphState) Step() (string, bool, error) {
 		edge.SetColor(COLOR_RED)
 	}
 
+	if err := gs.goroutineMap[step.GID].SafeSet("pencolor", "red", ""); err != nil {
+		return "", false, err
+	}
+	if err := gs.goroutineMap[step.GID].SafeSet("penwidth", "5.0", ""); err != nil {
+		return "", false, err
+	}
+	defer func() {
+		gs.goroutineMap[step.GID].SafeSet("pencolor", "black", "")
+		gs.goroutineMap[step.GID].SafeSet("penwidth", "1.0", "")
+	}()
+
 	gs.next++
 
 	var buf bytes.Buffer
