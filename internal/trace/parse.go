@@ -159,7 +159,8 @@ func Parse(traceFile string) ([]StepInfo, error) {
 
 				fmt.Fprintf(logf, "Goroutine %d\n", gid)
 				fmt.Fprintf(logf, "\tkind: %s\n", ev.Kind())
-				fmt.Fprintf(logf, "\transistion: %s -> %s\n", from, to)
+				fmt.Fprintf(logf, "\ttransistion: %s -> %s\n", from, to)
+				fmt.Fprintf(logf, "\treason: %s\n", st.Reason)
 				fmt.Fprintf(logf, "\tev.Goroutine(): %d\n", gid)
 				fmt.Fprintf(logf, "\tst.Resource.Goroutine(): %d\n", st.Resource.Goroutine())
 				fmt.Fprintln(logf, "\tstack trace:")
