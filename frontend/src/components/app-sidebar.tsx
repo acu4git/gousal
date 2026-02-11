@@ -29,7 +29,7 @@ const AppSideBar = () => {
 
   return (
     <Sidebar>
-      <SidebarHeader className="text-white text-xl font-bold">Go Vizualizar</SidebarHeader>
+      <SidebarHeader className="text-white text-xl font-bold">Gousal</SidebarHeader>
       <SidebarContent>
         <div className="h-full flex flex-col">
           <h3 className="text-white text-lg font-semibold p-2 border-b border-gray-600">
