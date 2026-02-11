@@ -3,6 +3,7 @@ package trace
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -379,5 +380,16 @@ func RunWithTrace(ctx context.Context, tmpRoot string, files ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	runtime.LogInfo(ctx, cmd.String())
-	return cmd.Run()
+
+	err := cmd.Run()
+	if err != nil {
+		// プログラムエラーの場合はエラーログ表示のみ，その他のエラーの場合はerrを返す
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			runtime.LogError(ctx, err.Error())
+			return err
+		}
+		runtime.LogError(ctx, exitErr.Error())
+	}
+	return nil
 }
