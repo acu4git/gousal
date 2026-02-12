@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	MODE_FUNC_ENTER = "func-enter"
-	MODE_FUNC_EXIT  = "func-exit"
-	MODE_GO_CREATE  = "go-create"
+	KIND_FUNC_ENTER = "func-enter"
+	KIND_FUNC_EXIT  = "func-exit"
+	KIND_GO_CREATE  = "go-create"
 )
 
 // イベントログがもつスタックトレースのフレーム情報
@@ -149,7 +149,7 @@ func Parse(traceFile string) ([]StepInfo, error) {
 					info := StepInfo{
 						GID:      int64(gid),
 						ChildGID: int64(childGID),
-						Mode:     MODE_GO_CREATE,
+						Mode:     KIND_GO_CREATE,
 						Func:     parentFunc,
 						File:     file,
 						Line:     line,
