@@ -102,7 +102,7 @@ func Parse(traceFile string) ([]StepInfo, error) {
 			stepHistory = append(stepHistory, step)
 			fmt.Fprintf(logf, "Goroutine %d\n", gid)
 			fmt.Fprintf(logf, "\tkind: %s\n", ev.Kind())
-			fmt.Fprintf(logf, "\tmode: %s\n", log.Category)
+			fmt.Fprintf(logf, "\tevent: %s\n", log.Category)
 			fmt.Fprintf(logf, "\tfuncDefID: %s\n", log.Message)
 		case xtrace.EventStateTransition:
 			st := ev.StateTransition()
