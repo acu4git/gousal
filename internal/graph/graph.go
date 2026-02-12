@@ -81,7 +81,7 @@ func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, C
 func (gs *GraphState) Load() (string, error) {
 	// 1. 事前計算：全ステップをスキャンしてGoroutineのルート関数を特定する
 	for _, step := range gs.steps {
-		if step.Mode == trace.KIND_FUNC_ENTER {
+		if step.Mode == trace.EVENT_FUNC_ENTER {
 			if _, ok := gs.goroutineRootFunc[step.GID]; !ok {
 				gs.goroutineRootFunc[step.GID] = step.Func
 			}
@@ -91,7 +91,7 @@ func (gs *GraphState) Load() (string, error) {
 	// 2. グラフ要素を構築する
 	for _, step := range gs.steps {
 		switch step.Mode {
-		case trace.KIND_FUNC_ENTER:
+		case trace.EVENT_FUNC_ENTER:
 			// goroutine subgraph
 			goCluster, err := gs.getOrCreateCluster(step)
 			if err != nil {
@@ -116,14 +116,14 @@ func (gs *GraphState) Load() (string, error) {
 			}
 
 			gs.fnStack[step.GID] = append(gs.fnStack[step.GID], step.Func)
-		case trace.KIND_FUNC_EXIT:
+		case trace.EVENT_FUNC_EXIT:
 			if len(gs.fnStack[step.GID]) == 0 {
-				text := fmt.Sprintf("failed to Load(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.KIND_FUNC_EXIT, step.GID, step.Func)
+				text := fmt.Sprintf("failed to Load(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.EVENT_FUNC_EXIT, step.GID, step.Func)
 				return "", errors.New(text)
 			}
 			top := len(gs.fnStack[step.GID]) - 1
 			gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
-		case trace.KIND_GO_CREATE:
+		case trace.EVENT_GO_CREATE:
 			// color := util.RandomBrightColor()
 			// parent := fmt.Sprintf("%d:%s", step.GID, step.Func)
 			// gs.goColorMap[parent] = color
@@ -213,13 +213,13 @@ func (gs *GraphState) Step() (string, bool, error) {
 	var logMessage string
 
 	switch step.Mode {
-	case trace.KIND_FUNC_ENTER:
+	case trace.EVENT_FUNC_ENTER:
 		logMessage = fmt.Sprintf("Step %d: [FUNC ENTER]\nGID %d enters %s", gs.next+1, step.GID, step.Func)
 
 		// goroutine subgraph
 		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
-			text := fmt.Sprintf("failed to Step(@%s): cluster_goroutine_%d is not created", trace.KIND_FUNC_ENTER, step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): cluster_goroutine_%d is not created", trace.EVENT_FUNC_ENTER, step.GID)
 			return "", false, errors.New(text)
 		}
 		goCluster.SetStyle(STYLE_FILLED)
@@ -229,13 +229,13 @@ func (gs *GraphState) Step() (string, bool, error) {
 
 		// func node
 		if _, ok := gs.funcNodeMap[step.GID]; !ok {
-			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.KIND_FUNC_ENTER, step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.EVENT_FUNC_ENTER, step.GID)
 			return "", false, errors.New(text)
 		}
 		funcNode, ok := gs.funcNodeMap[step.GID][step.Func]
 		if !ok {
 			name := fmt.Sprintf("%s-gid%d", step.Func, step.GID)
-			text := fmt.Sprintf("failed to Step(@%s): funcNode(%s) is not created", trace.KIND_FUNC_ENTER, name)
+			text := fmt.Sprintf("failed to Step(@%s): funcNode(%s) is not created", trace.EVENT_FUNC_ENTER, name)
 			return "", false, errors.New(text)
 		}
 		funcNode.SetStyle(STYLE_FILLED)
@@ -244,14 +244,14 @@ func (gs *GraphState) Step() (string, bool, error) {
 		// transisition edge
 		if len(gs.fnStack[step.GID]) > 0 {
 			if _, ok := gs.callEdgeMap[step.GID]; !ok {
-				text := fmt.Sprintf("failed to Step(@%s): callEdgeMap[%d] is not created", trace.KIND_FUNC_ENTER, step.GID)
+				text := fmt.Sprintf("failed to Step(@%s): callEdgeMap[%d] is not created", trace.EVENT_FUNC_ENTER, step.GID)
 				return "", false, errors.New(text)
 			}
 			top := len(gs.fnStack[step.GID]) - 1
 			label := fmt.Sprintf("%s:%d -> %s:%d", gs.fnStack[step.GID][top], step.GID, step.Func, step.GID)
 			callEdge, ok := gs.callEdgeMap[step.GID][label]
 			if !ok {
-				text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.KIND_FUNC_ENTER, step.GID)
+				text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.EVENT_FUNC_ENTER, step.GID)
 				return "", false, errors.New(text)
 			}
 			callEdge.SetStyle(STYLE_FILLED)
@@ -259,9 +259,9 @@ func (gs *GraphState) Step() (string, bool, error) {
 		}
 
 		gs.fnStack[step.GID] = append(gs.fnStack[step.GID], step.Func)
-	case trace.KIND_FUNC_EXIT:
+	case trace.EVENT_FUNC_EXIT:
 		if len(gs.fnStack[step.GID]) == 0 {
-			text := fmt.Sprintf("failed to Step(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.KIND_FUNC_EXIT, step.GID, step.Func)
+			text := fmt.Sprintf("failed to Step(%s): fnStack for GID %d is empty, but received exit event for func %s", trace.EVENT_FUNC_EXIT, step.GID, step.Func)
 			return "", false, errors.New(text)
 		}
 
@@ -269,17 +269,17 @@ func (gs *GraphState) Step() (string, bool, error) {
 
 		goCluster, ok := gs.goroutineMap[step.GID]
 		if !ok {
-			text := fmt.Sprintf("failed to Step(%s): goroutineMap[%d] is not created", trace.KIND_FUNC_EXIT, step.GID)
+			text := fmt.Sprintf("failed to Step(%s): goroutineMap[%d] is not created", trace.EVENT_FUNC_EXIT, step.GID)
 			return "", false, errors.New(text)
 		}
 
 		if _, ok := gs.funcNodeMap[step.GID]; !ok {
-			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.KIND_FUNC_ENTER, step.GID)
+			text := fmt.Sprintf("failed to Step(@%s): funcNodeMap[%d] is not created", trace.EVENT_FUNC_ENTER, step.GID)
 			return "", false, errors.New(text)
 		}
 		fnNode, ok := gs.funcNodeMap[step.GID][step.Func]
 		if !ok {
-			text := fmt.Sprintf("failed to Step(%s): funcNode(%s) is not created is not created", trace.KIND_FUNC_EXIT, step.Func)
+			text := fmt.Sprintf("failed to Step(%s): funcNode(%s) is not created is not created", trace.EVENT_FUNC_EXIT, step.Func)
 			return "", false, errors.New(text)
 		}
 		fnNode.SetStyle(STYLE_FILLED)
@@ -290,7 +290,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 			label := fmt.Sprintf("%s:%d -> %s:%d", gs.fnStack[step.GID][top-1], step.GID, gs.fnStack[step.GID][top], step.GID)
 			callEdge, ok := gs.callEdgeMap[step.GID][label]
 			if !ok {
-				text := fmt.Sprintf("failed to Step(%s): callEdge[%d] is not created", trace.KIND_FUNC_EXIT, step.GID)
+				text := fmt.Sprintf("failed to Step(%s): callEdge[%d] is not created", trace.EVENT_FUNC_EXIT, step.GID)
 				return "", false, errors.New(text)
 			}
 			callEdge.SetStyle(STYLE_DASHED)
@@ -319,7 +319,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 		}
 
 		gs.fnStack[step.GID] = gs.fnStack[step.GID][:top]
-	case trace.KIND_GO_CREATE:
+	case trace.EVENT_GO_CREATE:
 		logMessage = fmt.Sprintf("Step %d: [GO CREATE]\nGID %d creates GID %d at %s", gs.next+1, step.GID, step.ChildGID, step.Func)
 		from := fmt.Sprintf("%d:%s", step.GID, step.Func)
 		to := step.ChildGID
