@@ -81,7 +81,7 @@ func NewGraphState(ctx context.Context, steps trace.StepHistory) (*GraphState, C
 func (gs *GraphState) Load() (string, error) {
 	// 1. 事前計算：全ステップをスキャンしてGoroutineのルート関数を特定する
 	for _, step := range gs.steps {
-		if step.Mode == trace.EVENT_FUNC_ENTER {
+		if step.Event == trace.EVENT_FUNC_ENTER {
 			if _, ok := gs.goroutineRootFunc[step.GID]; !ok {
 				gs.goroutineRootFunc[step.GID] = step.Func
 			}
@@ -90,7 +90,7 @@ func (gs *GraphState) Load() (string, error) {
 
 	// 2. グラフ要素を構築する
 	for _, step := range gs.steps {
-		switch step.Mode {
+		switch step.Event {
 		case trace.EVENT_FUNC_ENTER:
 			// goroutine subgraph
 			goCluster, err := gs.getOrCreateCluster(step)
@@ -212,7 +212,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 	// ログメッセージの生成
 	var logMessage string
 
-	switch step.Mode {
+	switch step.Event {
 	case trace.EVENT_FUNC_ENTER:
 		logMessage = fmt.Sprintf("Step %d: [FUNC ENTER]\nGID %d enters %s", gs.next+1, step.GID, step.Func)
 
@@ -350,7 +350,7 @@ func (gs *GraphState) Step() (string, bool, error) {
 		edge.SetStyle(STYLE_FILLED)
 		edge.SetColor(COLOR_RED)
 	default:
-		logMessage = fmt.Sprintf("Step %d: [%s]\nGID %d", gs.next+1, step.Mode, step.GID)
+		logMessage = fmt.Sprintf("Step %d: [%s]\nGID %d", gs.next+1, step.Event, step.GID)
 	}
 
 	if err := gs.goroutineMap[step.GID].SafeSet("pencolor", "red", ""); err != nil {

@@ -45,7 +45,7 @@ func (stk callStack) hasFuncWithPrefix(args ...string) bool {
 type StepInfo struct {
 	GID      int64  // parent goroutine id
 	ChildGID int64  // child goroutine id(when go-create or go-)
-	Mode     string // event mode
+	Event    string // event name
 	Func     string // function name
 	File     string // filepath where function is written
 	Line     uint64 // line where function is located
@@ -149,7 +149,7 @@ func Parse(traceFile string) ([]StepInfo, error) {
 					info := StepInfo{
 						GID:      int64(gid),
 						ChildGID: int64(childGID),
-						Mode:     EVENT_GO_CREATE,
+						Event:    EVENT_GO_CREATE,
 						Func:     parentFunc,
 						File:     file,
 						Line:     line,
@@ -226,16 +226,16 @@ func idToFuncInfo(id string) (funcInfo, error) {
 // funcDefIDは，"<project_root>/<rel>/<go_file>:<line>:<col>#<module>/<package>.<func>"のようなファイル情報と関数情報を'#'で区切る形式のID．
 //
 // 例外的に，mainパッケージのmain関数は"<project_root>/<rel>/<go_file>:<line>:<col>#main.main"と表現される．
-func funcDefIdToStepInfo(gid xtrace.GoID, mode, funcDefID string) (StepInfo, error) {
+func funcDefIdToStepInfo(gid xtrace.GoID, event, funcDefID string) (StepInfo, error) {
 	fn, err := idToFuncInfo(funcDefID)
 	if err != nil {
 		return StepInfo{}, err
 	}
 	return StepInfo{
-		GID:  int64(gid),
-		Mode: mode,
-		Func: fn.fullname,
-		File: fn.filepath,
-		Line: fn.line,
+		GID:   int64(gid),
+		Event: event,
+		Func:  fn.fullname,
+		File:  fn.filepath,
+		Line:  fn.line,
 	}, nil
 }
