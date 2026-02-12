@@ -14,7 +14,6 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"text/template"
 	etemp "wails-test/assets/template"
 	"wails-test/internal/util"
@@ -302,7 +301,8 @@ func funcDefID(fset *token.FileSet, file *ast.File, fn *ast.FuncDecl, projRoot s
 	}
 	funcName += fmt.Sprintf(".%s", fn.Name.Name)
 	if params := typeParamNames(fn); len(params) > 0 {
-		funcName += fmt.Sprintf("[%s]", strings.Join(params, ","))
+		// funcName += fmt.Sprintf("[%s]", strings.Join(params, ","))
+		funcName += "[...]"
 	}
 
 	// 無名関数の場合はパスを追加
