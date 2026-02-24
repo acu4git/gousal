@@ -63,7 +63,7 @@ const View = () => {
 
     const res = setInterval(() => {
       step();
-    }, 500);
+    }, 200);
 
     return () => clearInterval(res);
   }, [isAuto, canStep, step]);
