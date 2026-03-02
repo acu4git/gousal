@@ -1,19 +1,38 @@
-# README
+# gousal
 
-## About
+gousal is a visualizer of Go councurrency and function transitions.
 
-This is the official Wails React-TS template.
+![demo](./assets/readme/demo.gif)
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## Overview
 
-## Live Development
+gousal visualizes the execution order of concurrent Go programs using static analysis and execution traces, illustrating causal relationships through dynamic call graphs.
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Getting Started
 
-## Building
+### Prerequisites
 
-To build a redistributable, production mode package, use `wails build`.
+- [Go](https://go.dev/doc/install) >= 1.21
+
+### installing
+
+🚧 Under Construction 🚧
+
+## Development / Contributing
+
+If you want to build `gousal` from source, customize it, or contribute to the project, please follow the steps below to set up your development environment.
+
+### Prerequisites
+
+- [Go](https://go.dev/doc/install) >= 1.25
+- [Node.js](https://nodejs.org/en/download/) and npm (or yarn / pnpm)
+- [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+
+### Running in Development Mode
+
+To run the application in development mode with live reload for both the frontend and backend, use the Wails CLI:
+
+```bash
+# Run in development mode
+wails dev
+```
